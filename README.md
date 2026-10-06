@@ -9,24 +9,19 @@ own conventions come from its `CLAUDE.md`, and everything machine-specific comes
 
 ## Install
 
-Either clone it where Claude Code picks up plugins:
+Clone it where Claude Code picks up plugins:
 
 ```
 git clone https://github.com/MarkusVGJensen/flow ~/.claude/skills/flow
 ```
 
-or add it as a marketplace plugin:
-
-```
-/plugin marketplace add MarkusVGJensen/flow
-/plugin install flow
-```
-
 Then copy `flow.config.example.json` to `~/.claude/flow.local.json` (personal) or `.claude/flow.json`
-(shared with the repo) and fill it in.
+(shared with the repo) and fill it in, and install the [companion plugins](#companion-plugins).
 
 For a desktop front end — a tab per issue, the review queue, one-click worktrees — see
-[Helm](https://github.com/MarkusVGJensen/helm), which types these commands into embedded sessions.
+[Helm](https://github.com/MarkusVGJensen/helm-releases), which types these commands into embedded
+sessions. Its [setup guide](https://github.com/MarkusVGJensen/helm-releases/blob/main/SETUP.md) covers
+`flow` too, and Claude can follow it for you.
 
 ## What you get
 
@@ -56,7 +51,9 @@ Agents: `tester` (writes red tests, never production code), `reviewer` (fresh-co
 
 ## Companion plugins
 
-`flow` delegates rather than reimplements. Install these from `claude-plugins-official`:
+`flow` delegates rather than reimplements. Install these from `claude-plugins-official`, in a
+session with `/plugin install <name>@claude-plugins-official` or from a shell with
+`claude plugin install <name>@claude-plugins-official --scope user`:
 
 - **pr-review-toolkit** — the six review lenses `/flow:review-mr` fans out to
 - **feature-dev** — `code-architect` and `code-explorer`, used for the planning step
