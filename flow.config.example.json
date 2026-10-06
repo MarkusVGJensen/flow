@@ -1,0 +1,33 @@
+{
+  "//": "Copy to ~/.claude/flow.local.json (personal) or .claude/flow.json (shared with the repo).",
+
+  "forge": "glab",
+  "project": "group/repo",
+  "defaultTarget": "master",
+
+  "worktreeRoot": "D:/wt",
+  "branchPattern": "you/{issue}-{slug}",
+
+  "verify": {
+    "//": "Inner loop must be cheap. syntaxCheck runs per edit; targeted builds one test target.",
+    "syntaxCheck": null,
+    "targeted": null,
+    "gate": [],
+    "format": null
+  },
+
+  "review": {
+    "//": "Findings below floor are dropped. 80 is the plugin default; raise it if noise annoys you.",
+    "floor": 80,
+    "mute": []
+  },
+
+  "ci": {
+    "pollMinutes": 10,
+    "stalledJobMinutes": 30,
+    "attempts": 3,
+    "attemptsBlind": 2,
+    "blindJobPattern": null,
+    "flakyTests": []
+  }
+}

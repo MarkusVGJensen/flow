@@ -1,0 +1,23 @@
+{
+  "description": "Two PreToolUse guards on Bash. format-gate: blocks a commit when source files changed since the formatter last ran (formatting rewrites every mtime, so it runs once at the end, and this keeps it honest). bash-guard: blocks a force push without a lease, and a tree-wide formatter run that has not been acknowledged.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/format-gate.sh\"",
+            "if": "Bash(git commit*)",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/bash-guard.sh\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
