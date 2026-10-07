@@ -13,7 +13,9 @@
     "syntaxCheck": null,
     "targeted": null,
     "gate": [],
-    "format": null
+    "format": null,
+    "//formatGuard": "Regex for the project's tree-wide formatter command. The bash guard blocks a match that has no --file and no FLOW_TREEWIDE_OK=1. Null disables the guard.",
+    "formatGuard": null
   },
 
   "review": {

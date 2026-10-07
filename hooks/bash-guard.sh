@@ -15,10 +15,22 @@ if printf '%s' "$payload" | grep -Eq 'git +push[^"]* (--force|-f)( |\\|"|$)'; th
   exit 2
 fi
 
-# 2. The tree-wide formatter is destructive when its worker pool fails (it has truncated untouched
-#    files to 0 bytes) and rewrites every mtime. Per-file runs are fine. A tree-wide run needs the
-#    checks below and an explicit acknowledgement so it cannot be reached by reflex.
-if printf '%s' "$payload" | grep -Eq 'enforce-source-file-formatting' \
+# 2. A tree-wide formatter run rewrites every mtime, and on some projects its worker pool is
+#    destructive when it fails (one has truncated untouched files to 0 bytes). Per-file runs are
+#    fine. Which script that is belongs to the project, so the pattern comes from the flow config:
+#    `verify.formatGuard`, an extended regex matched against the command. No value, no guard.
+config=""
+if [ -f .claude/flow.json ]; then
+  config=.claude/flow.json
+elif [ -f "$HOME/.claude/flow.local.json" ]; then
+  config="$HOME/.claude/flow.local.json"
+fi
+guard=""
+if [ -n "$config" ]; then
+  guard=$(grep -Eo '"formatGuard"[[:space:]]*:[[:space:]]*"[^"]*"' "$config" | head -n 1 | sed -E 's/^"formatGuard"[[:space:]]*:[[:space:]]*"//; s/"$//')
+fi
+if [ -n "$guard" ] \
+   && printf '%s' "$payload" | grep -Eq "$guard" \
    && ! printf '%s' "$payload" | grep -Eq -- '--file' \
    && ! printf '%s' "$payload" | grep -Eq 'FLOW_TREEWIDE_OK=1'; then
   echo "Blocked: tree-wide formatter run." >&2

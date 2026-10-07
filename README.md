@@ -43,8 +43,9 @@ renders it under **Plan**; in a plain terminal it is a Markdown file. `/flow:rev
 unanchored summary note, the review's cover letter.
 
 Hooks, all on Bash: the **format gate** blocks a commit when source files changed after the formatter
-last ran; the **bash guard** blocks `git push --force` without a lease and a tree-wide formatter run
-that has not been acknowledged with `FLOW_TREEWIDE_OK=1`.
+last ran; the **bash guard** blocks `git push --force` without a lease and, when `verify.formatGuard`
+names the project's tree-wide formatter, a run of it that has not been acknowledged with
+`FLOW_TREEWIDE_OK=1`.
 
 Agents: `tester` (writes red tests, never production code), `reviewer` (fresh-context diff review),
 `mr-creator` (git only), `comment-resolver`. Skill: `extent-router`, for sizing a task.
