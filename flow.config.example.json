@@ -35,6 +35,19 @@
     "reviewers": null
   },
 
+  "models": {
+    "//": "The model each kind of agent runs on, passed per call; null keeps the agent file's own model. sonnet, opus, haiku, fable, or a full model id.",
+    "research": "sonnet",
+    "architect": null,
+    "build": "opus",
+    "review": "opus",
+    "lenses": null,
+    "mr": "opus"
+  },
+
+  "//learn": "After the MR is open: \"ask\" offers to fold what this issue taught into CLAUDE.md (claude-md-management), \"off\" never does.",
+  "learn": "ask",
+
   "ci": {
     "pollMinutes": 10,
     "stalledJobMinutes": 30,

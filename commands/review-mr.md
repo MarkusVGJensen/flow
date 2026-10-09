@@ -1,7 +1,7 @@
 ---
 description: "Review someone else's merge request and post line-anchored draft comments"
 argument-hint: "<mr-id> [--hold] [note]"
-allowed-tools: ["Bash", "Glob", "Grep", "Read", "Write", "Task"]
+allowed-tools: ["Bash", "Glob", "Grep", "Read", "Write", "Task", "Skill"]
 ---
 
 # Review a merge request
@@ -64,7 +64,8 @@ diff, not the default, and the note wins over the table: "focus on the threading
 bear on threading and nothing else.
 
 Launch the chosen `pr-review-toolkit` agents **in parallel**, one Task call per lens, each given the
-changed file list and told to review only those files:
+changed file list and told to review only those files, and with `models.lenses` from the config as
+the model when it is set:
 
 | Lens | When |
 | --- | --- |
@@ -74,6 +75,7 @@ changed file list and told to review only those files:
 | `comment-analyzer` | comments or docs changed |
 | `type-design-analyzer` | new or modified types |
 | `code-simplifier` | always, last |
+| `security-review` skill | input parsing, auth, file paths, shell or SQL built from data, deserialization, secrets or network handling changed. A skill, not an agent: invoke it yourself, on the diff between `base_sha` and `head_sha`, alongside the agents |
 
 ## 6. Filter hard
 

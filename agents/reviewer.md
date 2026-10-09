@@ -1,7 +1,7 @@
 ---
 name: reviewer
 description: Reviews a diff in fresh context against the project's own rules. Use before pushing, and for the self-review step of the issue flow.
-tools: ["Read", "Bash", "Grep", "Glob"]
+tools: ["Read", "Bash", "Grep", "Glob", "LSP"]
 model: opus
 color: green
 ---
@@ -49,6 +49,12 @@ Read `CLAUDE.md` and any nested `CLAUDE.md` covering the changed paths. Score ea
 - A new type whose invalid states are still representable.
 - Anything that got noticeably more complex. Say what the simpler shape would be, and its cost.
 - A change that builds in one configuration or on one platform when the project has several.
+
+
+**Use the language server when there is one.** With a code-intelligence plugin installed (clangd-lsp,
+pyright-lsp, …) the `LSP` tool answers "where is this defined", "who calls this" and "what type is
+this" exactly, in one call. Prefer it to grep sweeps for symbols; grep stays right for text, config
+and comments.
 
 ## Output
 

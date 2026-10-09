@@ -6,8 +6,8 @@ allowed-tools: ["Bash", "Glob", "Grep", "Read", "Edit", "Task"]
 
 # Watch the pipeline
 
-Poll the pipeline for `$ARGUMENTS` (default: the MR for the current branch) every `ci.pollMinutes`
-until it is green or you stop. This is the only part of `flow` that writes to shared infrastructure
+Watch the pipeline for `$ARGUMENTS` (default: the MR for the current branch) until it is green or you
+stop. This is the only part of `flow` that writes to shared infrastructure
 without asking each time, so the limits below are absolute.
 
 ## Refuse outright
@@ -23,6 +23,28 @@ Stop immediately, with a one-line reason, if any of these hold:
    Report the failure and let the user decide.
 3. **Attempts are spent** — `ci.attempts` for a normal job, `ci.attemptsBlind` for one matching
    `ci.blindJobPattern`.
+
+## Wait without spending tokens
+
+Do not poll by hand: every check would be a model turn. The plugin ships a waiter that polls on its
+own and only returns when CI has finished:
+
+```
+sh "<plugin root>/scripts/wait-ci.sh" <forge> <project> <mr> <ci.pollMinutes × 60> 25
+```
+
+`<plugin root>` is the folder this command came from (`~/.claude/skills/flow` for a clone). Start it
+with the Bash tool's `run_in_background: true` and end your turn with one line saying what you are
+waiting for. It prints `status <s>` on each change and exits:
+
+- `done success` — green. Report and stop.
+- `done failed` (or `canceled`) — triage, below.
+- `done none` — no pipeline ran for this MR. Say so and stop.
+- `still <s>`, exit 3 — 25 minutes passed, which is under the background limit. Start it again; it
+  is not an attempt.
+
+When you are woken by its exit, read its output and carry on. If you are not woken (an environment
+without background notifications), check it with the Bash tool when the user next speaks.
 
 ## Triage each failed job
 
@@ -52,7 +74,7 @@ glab ci trace <job-id>          # or: glab api "projects/<enc>/jobs/<id>/trace"
 `--force-with-lease`, never `--force`. If the lease fails, the remote moved — someone else pushed, or
 another worktree did. **Stop and report.** Do not re-fetch and retry; that is how you overwrite work.
 
-The push retriggers the pipeline. Count the attempt and go back to polling.
+The push retriggers the pipeline. Count the attempt and start the waiter again.
 
 ## Report each cycle
 

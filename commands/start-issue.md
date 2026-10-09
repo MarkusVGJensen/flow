@@ -1,7 +1,7 @@
 ---
 description: "Take an issue from a worktree to a merge request, stopping twice for approval"
 argument-hint: "<issue-id> [extent]"
-allowed-tools: ["Bash", "Glob", "Grep", "Read", "Write", "Edit", "Task"]
+allowed-tools: ["Bash", "Glob", "Grep", "Read", "Write", "Edit", "Task", "Skill"]
 ---
 
 # Start an issue
@@ -57,12 +57,23 @@ what finishes the gate. Keep `issue` and `branch` in every write.
   wait.
 - `/flow:status` and Helm's timeline read this file. Nothing else does.
 
+## Models
+
+Every agent below is launched with the model its kind has in `models` in the config, passed on the
+call: `models.research` for the researchers, `models.architect` for the architect, `models.build` for
+the tester and the implementer, `models.review` for the simplifier and the reviewer, `models.mr` for
+the MR creator. A missing or null entry passes nothing, and the agent's own file decides. You, the
+session running this chain, stay on whatever model the user started you on.
+
 ## 1. Config and issue
 
-Read config (`.claude/flow.json`, else `~/.claude/flow.local.json`). Fetch the issue:
+Read config (`.claude/flow.json`, else `~/.claude/flow.local.json`). If neither exists, stop and say
+which file to create from `flow.config.example.json`; never guess a project, a branch or a command.
+Fetch the issue:
 
 ```
-glab api "projects/<enc>/issues/<id>"
+glab api "projects/<enc>/issues/<id>"      # forge: glab
+gh issue view <id> --json title,body,comments   # forge: gh
 ```
 
 Read the description **and the comments** — the thread usually narrows what is actually wanted.
@@ -155,8 +166,21 @@ plan is probably wrong.
 
 ## 8. Self-review — fresh context
 
-Task the `flow:reviewer` agent on the full diff. It has not seen the implementation being written,
-which is the point. Route real findings back to the implementer; ignore anything in `review.mute`.
+Three passes, in this order, all on the branch's diff against `origin/<defaultTarget>`:
+
+1. **Simplify.** Task the `code-simplifier` agent (from the `code-simplifier` plugin) with the
+   production files the plan lists: same behaviour, less code, the project's idioms. It does not touch
+   the tests. Re-run `verify.targeted` afterwards; a red test means the simplification changed
+   behaviour, so undo that part.
+2. **Review.** Task the `flow:reviewer` agent on the full diff. It has not seen the implementation
+   being written, which is the point. Route real findings back to the implementer; ignore anything in
+   `review.mute`.
+3. **Security, when it applies.** If the diff touches input parsing, authentication or permissions,
+   file paths, shell or SQL built from data, deserialization, secrets or network handling, invoke the
+   `security-review` skill on the branch. Treat what it reports like the reviewer's findings. A diff
+   that touches none of these skips it; say so in one line.
+
+The simplifier is skipped when the plugin is not installed, with a line saying so; the review is not.
 
 ## 9. Gate build
 
@@ -207,3 +231,9 @@ On approval, write step 12 `active` and task `flow:mr-creator`. It squashes, pus
 `{issue} - What was fixed` with the description from `mr.template`, sets assignee and reviewers from
 `mr.assignee` and `mr.reviewers`, and returns the link. It does not edit source. Then write step 12
 `done`.
+
+**What this issue taught.** With `learn` set to `"ask"` (the default), finish with one line offering
+to fold what this issue taught into the project's `CLAUDE.md`: a convention the reviewer had to
+enforce, a build quirk the gate hit, a test pattern the tester settled on. Only on a yes, invoke the
+`claude-md-management:revise-claude-md` skill with those points, and show the proposed change before
+it is written. With `learn` set to `"off"`, or nothing worth keeping, say nothing.

@@ -28,7 +28,8 @@ Never make a change you think is wrong just because a reviewer asked. Say so ins
 
 ## 3. Fix
 
-Route real fixes through the implementer, tests first where behaviour changes. Then `verify.gate` and
+Route real fixes through the implementer, tests first where behaviour changes, with
+`models.build` from the config as the model when it is set. Then `verify.gate` and
 `verify.format`, then `touch "$(git rev-parse --git-dir)/flow-formatted"` so the commit gate passes.
 
 ## 4. One commit

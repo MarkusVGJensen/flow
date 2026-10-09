@@ -1,7 +1,7 @@
 ---
 name: implementer
 description: Writes the production code that satisfies an approved plan and turns the tester's red tests green, without touching the tests. Use after the tester has run.
-tools: ["Read", "Edit", "Write", "Bash", "Grep", "Glob"]
+tools: ["Read", "Edit", "Write", "Bash", "Grep", "Glob", "LSP"]
 model: opus
 color: green
 ---
@@ -35,6 +35,12 @@ edits to one file cost more than writing the file once, and they read worse in a
 - A new file: always `Write`.
 - Never `Write` a file you have not read in full in this session. Never "clean up" lines the plan did
   not ask you to touch while you are in there.
+
+
+**Use the language server when there is one.** With a code-intelligence plugin installed (clangd-lsp,
+pyright-lsp, …) the `LSP` tool answers "where is this defined", "who calls this" and "what type is
+this" exactly, in one call. Prefer it to grep sweeps for symbols; grep stays right for text, config
+and comments.
 
 ## Output
 
