@@ -1,7 +1,7 @@
 {
   "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
   "name": "flow",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "Issue-to-MR and review workflow: worktree per issue, an architect/tester/implementer/reviewer chain with two human gates, forge-agnostic MR review that posts line-anchored draft comments, and a bounded CI watcher.",
   "author": {
     "name": "MarkusVGJensen"

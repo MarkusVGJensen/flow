@@ -5,7 +5,7 @@
   "project": "group/repo",
   "defaultTarget": "master",
 
-  "worktreeRoot": "D:/wt",
+  "worktreeRoot": "~/worktrees",
   "branchPattern": "you/{issue}-{slug}",
 
   "verify": {
@@ -14,6 +14,8 @@
     "targeted": null,
     "gate": [],
     "format": null,
+    "//extra": "Checks run after the formatter, each only when its condition holds. Write the condition after a #, e.g. \"scripts/check-config.sh   # when anything under config/ changed\".",
+    "extra": [],
     "//formatGuard": "Regex for the project's tree-wide formatter command. The bash guard blocks a match that has no --file and no FLOW_TREEWIDE_OK=1. Null disables the guard.",
     "formatGuard": null
   },
@@ -22,6 +24,15 @@
     "//": "Findings below floor are dropped. 80 is the plugin default; raise it if noise annoys you.",
     "floor": 80,
     "mute": []
+  },
+
+  "mr": {
+    "//template": "Markdown file for the MR description: absolute, ~/..., or relative to the repo root. Null uses the built-in Summary / How to test / Notes layout.",
+    "template": null,
+    "//assignee": "\"me\" assigns the user running flow; null leaves the MR unassigned.",
+    "assignee": "me",
+    "//reviewers": "null adds none and leaves project defaults; \"none\" also removes any the project adds; or a list of usernames.",
+    "reviewers": null
   },
 
   "ci": {

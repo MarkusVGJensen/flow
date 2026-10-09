@@ -1,12 +1,13 @@
 ---
-description: "Open a file in Visual Studio at a line, from the current worktree"
+description: "Optional, for Visual Studio users: open a file at a line, from the current worktree"
 argument-hint: "<file>[:line]"
 allowed-tools: ["Bash", "Glob"]
 ---
 
 # Open in Visual Studio
 
-Open `$ARGUMENTS` in the running Visual Studio instance, or a new one.
+Open `$ARGUMENTS` in the running Visual Studio instance, or a new one. An optional convenience for
+Visual Studio users on Windows; nothing else in flow depends on it.
 
 Resolve the path against the current worktree; if the argument is a bare filename, Glob for it and ask
 only when there is genuine ambiguity.

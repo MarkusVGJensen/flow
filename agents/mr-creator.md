@@ -27,7 +27,7 @@ whole.
 
 If `CLAUDE.md` asks for a series instead, shape it for commit-by-commit review: each commit builds on
 its own and does one thing, and a later commit never fixes an earlier one in the same series. Say so
-in your report, because it changes two boxes in the checklist.
+in your report, and in the description if the template has a place for it.
 
 Single-line messages. Imperative. What changed and why, not how.
 
@@ -40,10 +40,15 @@ backup first (`git tag backup/<branch>-<stamp>`), then `git push --force-with-le
 `--force`; the guard blocks it, and if the lease fails the remote moved — stop and report. Open the
 MR against the configured target.
 
-- **Assignee: the user, and only the user.**
-- **Reviewers: none.** Never pass `--reviewer`. If something puts reviewers on it anyway — a project
-  default, an approval rule — take them off again and check that they are gone. The user picks their
-  own reviewers, and an MR that arrives already assigned to someone pulls them in uninvited.
+Assignee and reviewers come from the flow config (`.claude/flow.json`, else
+`~/.claude/flow.local.json`):
+
+- **`mr.assignee`** — `"me"` (the default) assigns the user running flow and nobody else; `null`
+  leaves the MR unassigned.
+- **`mr.reviewers`** — `null` (the default) adds none: never pass `--reviewer`, and leave whatever the
+  project itself assigns. `"none"` also removes any reviewers a project default or approval rule put
+  on, and checks that they are gone, so the user picks their own. A list of usernames requests
+  exactly those.
 
 ## The title
 
@@ -58,64 +63,37 @@ imperative and in sentence case, e.g. `212 - Rename UserStore to AccountStore`.
 
 ## The description
 
-Always this layout, every MR, every section, in this order:
+Use the template named by `mr.template`: a Markdown file, its path absolute, starting with `~`, or
+relative to the repository root. If it is set but cannot be read, say so and stop rather than fall
+back. Without one, use this:
 
 ```markdown
-# Issue explained
+## Summary
 
-<What was actually wrong, in the reader's terms — not a restatement of the issue title.>
+<What was wrong and what the change does about it, in the reader's terms. A reviewer reads the diff
+for the how, so keep to the shape of the solution, plus any decision a reader would otherwise question
+or get wrong if they changed it later.>
 
-# The fix
+## How to test
 
-<What the change does about it. A reviewer reads the diff for the how, so keep this to the shape of
-the solution, plus any decision a reader would otherwise question or get wrong if they changed it
-later.>
+<What was run to verify it, and what a reviewer can run or click to see it work. Say so if something
+could not be run on this machine.>
 
-# Checklist
-## Review complexity
-I think this code review is:
-- [ ] Easy & fast (less than 5min)
-- [x] Standard complexity (less than 1h)
-- [ ] Very complex (more than 1h)
-- [ ] Extremely complex (more than 1d)
+## Notes
 
-## Test of solution
-- [x] I have tested the solution
-- [ ] I would like you to test the solution
+<Anything left out on purpose, follow-ups, or risks. Leave the section out when there is nothing.>
 
-## How to review
-- [ ] Commit-wise
-- [x] As a whole
-
-## Unit tests
-- [x] I have made unit tests for the solution
-- [ ] I have not made unit tests for the solution because of the comment below
-
-## Git history
-- [x] I will squash the commits
-- [ ] I will keep the commits as-is
-
-Closes #{issue-number}
+Closes #{issue}
 ```
 
-The two `<…>` slots are yours to write; everything else is fixed. Reproduce the headings, the options
-and their wording exactly. What you decide there is **which box is ticked**, and you tick the one
-that is true of this MR:
+Filling a template:
 
-- **Review complexity** — from the diff a reviewer has to read, not from how long the work took. A
-  rename across many files is easy and fast; thirty lines of new concurrency is not.
-- **Test of solution** — `I have tested` when the gate build was green and the tests ran. `I would
-  like you to test` when you could not actually run it, for instance on a platform this machine
-  cannot build. Ticking the second means saying why under **The fix**.
-- **How to review** and **Git history** — you squash before pushing, so normally `As a whole` and
-  `I will squash the commits`. If the project's `CLAUDE.md` had you keep a series instead, tick
-  `Commit-wise` and `I will keep the commits as-is`.
-- **Unit tests** — `I have made` when the tester wrote tests for this change, which is the usual
-  path. If you tick `I have not made`, the comment it refers to must exist: add a line under **The
-  fix** saying why there are none.
-
-Never leave a block out, never add one, and never tick two boxes in a block. `Closes #{issue-number}`
-is the last line, with the `#`, so the forge closes the issue on merge.
+- `{issue}` is the issue number. Each `<…>` slot is yours to write; everything else stays as written.
+- An HTML comment in the template (`<!-- … -->`) is an instruction to you: follow it, and leave it
+  out of the description.
+- In a block of checkboxes, tick the box that is true of this MR, and only one unless the template
+  says otherwise.
+- Keep a `Closes #{issue}` line where the template has one, so the forge closes the issue on merge.
 
 ## Report
 

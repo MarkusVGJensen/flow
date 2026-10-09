@@ -31,8 +31,9 @@ Read `CLAUDE.md` and any nested `CLAUDE.md` covering the changed paths. Score ea
 
 ## Never report
 
-- Anything matching `review.mute` in config. On this project that includes formatting and whitespace:
-  a script owns those, and a comment about them wastes a human's attention.
+- Anything matching `review.mute` in config.
+- Formatting and whitespace, when the project has a formatter (`verify.format`): it owns those, and a
+  comment about them wastes a human's attention.
 - Generated code. Schema spelling is authoritative even when it looks wrong.
 - A restatement of what the code plainly does.
 - Style you would have written differently, absent a rule.
@@ -47,7 +48,7 @@ Read `CLAUDE.md` and any nested `CLAUDE.md` covering the changed paths. Score ea
 - Behaviour changed without a test changing.
 - A new type whose invalid states are still representable.
 - Anything that got noticeably more complex. Say what the simpler shape would be, and its cost.
-- A change that compiles on one build system when the project has two.
+- A change that builds in one configuration or on one platform when the project has several.
 
 ## Output
 

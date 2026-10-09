@@ -15,9 +15,8 @@ if printf '%s' "$payload" | grep -Eq 'git +push[^"]* (--force|-f)( |\\|"|$)'; th
   exit 2
 fi
 
-# 2. A tree-wide formatter run rewrites every mtime, and on some projects its worker pool is
-#    destructive when it fails (one has truncated untouched files to 0 bytes). Per-file runs are
-#    fine. Which script that is belongs to the project, so the pattern comes from the flow config:
+# 2. A tree-wide formatter run rewrites every mtime, and a parallel formatter that fails midway can
+#    leave files it never meant to touch modified or damaged. Per-file runs are fine. Which script that is belongs to the project, so the pattern comes from the flow config:
 #    `verify.formatGuard`, an extended regex matched against the command. No value, no guard.
 config=""
 if [ -f .claude/flow.json ]; then

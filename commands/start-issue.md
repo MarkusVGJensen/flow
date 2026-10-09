@@ -12,20 +12,49 @@ the pushed commits. Between them, do not ask permission for ordinary work.
 ## 0. The progress file
 
 `<worktree>/.flow-state.json` records how far this issue has come, so a session that dies, is
-compacted, or is resumed tomorrow picks up at the right step instead of starting over:
+compacted, or is resumed tomorrow picks up at the right step instead of starting over. Helm draws its
+step timeline from it, so keep it current:
 
 ```json
-{"issue": 128, "branch": "me/128-slug", "step": 6, "name": "tester", "status": "done", "at": "2026-09-14T10:12:00Z"}
+{"issue": 128, "branch": "me/128-slug", "step": 6, "name": "tester", "status": "active", "at": "2026-09-14T10:12:00Z"}
 ```
 
+`step` is the number of the step below, `name` its name from this list, `at` the UTC time of the write:
+
+| step | name | | step | name |
+| --- | --- | --- | --- | --- |
+| 1 | `issue` | | 7 | `implementer` |
+| 2 | `worktree` | | 8 | `review` |
+| 3 | `extent` | | 9 | `gate-build` |
+| 4 | `plan` | | 10 | `format` |
+| 5 | `plan-gate` | | 11 | `commits-gate` |
+| 6 | `tester` | | 12 | `mr` |
+
+`status` is exactly one of:
+
+- `active` — written at the **start** of a step, before any of its work.
+- `done` — written when the step has finished.
+- `waiting` — written at a gate (5 and 11) just before you stop for the user.
+- `skipped` — written for a step that does not apply this time, before moving on: no tests in the
+  plan's test list skips the tester, an empty `verify.gate` skips the gate build, and so on. Say why
+  in one line in the terminal.
+
+When the user approves a gate, write the **next** step as `active` straight away; the approval is
+what finishes the gate. Keep `issue` and `branch` in every write.
+
+- **Write it atomically**: write the whole object to `.flow-state.json.tmp` in the worktree, then
+  rename it over the real file (`mv -f .flow-state.json.tmp .flow-state.json`), so a reader never
+  sees half a file.
+- The file lives in the worktree, which exists from step 2. Its first write is step 2 `done`; steps
+  before that are not recorded.
+- The first time you create it, keep it and its temp file out of the diff:
+  `echo .flow-state.json >> "$(git rev-parse --git-dir)/info/exclude"`, and the same for
+  `.flow-state.json.tmp`.
 - **Before step 2**, if the worktree for this issue already exists and holds this file, say in one line
-  where you are resuming from and continue with the **next** step. Do not redo a step marked `done`.
-  A gate marked `waiting` means the user has not approved yet: show them the plan or diff again and
+  where you are resuming from. A step marked `done` or `skipped` is not redone: continue with the next.
+  A step marked `active` was interrupted: look at what it left in the worktree and finish it. A gate
+  marked `waiting` means the user has not approved yet: show them the plan or the commits again and
   wait.
-- **After every numbered step** below, rewrite the file with `status: done`. **At a gate**, write it
-  with `status: waiting` before you stop, and `done` when the user approves.
-- The first time you create it, keep it out of the diff:
-  `echo .flow-state.json >> "$(git rev-parse --git-dir)/info/exclude"`.
 - `/flow:status` and Helm's timeline read this file. Nothing else does.
 
 ## 1. Config and issue
@@ -54,7 +83,7 @@ one, ask before touching it — another session may own it.
 
 ## 3. Route the extent
 
-Invoke the `extent-router` skill. It picks single-agent, subagents, a team, or a workflow.
+Invoke the `extent-router` skill. It picks one session, subagents, an agent team, or a workflow.
 
 Below a team: proceed silently. At a team or workflow: show the choice, the agent count and a rough
 token estimate, and **wait**.
@@ -98,10 +127,12 @@ the tester and the reviewer read it.
 
 ## 5. ■ Gate 1 — the plan
 
-Say in a few lines what the plan does and that the document is in `.flow-plan.md` (Helm: the **Plan**
-button), then stop. Any clear yes is approval; Helm's **Approve plan** button types "The plan is
-approved. Continue.", possibly followed by a note to take into account. Answer design questions. Re-run the architect if the shape changes, and have it
-rewrite the file; do not patch a plan you no longer believe in.
+Write the progress file with `status: waiting`. Say in a few lines what the plan does and that the
+document is in `.flow-plan.md` (Helm: the **Plan** button), then stop. Any clear yes is approval;
+Helm's **Approve plan** button types "The plan is approved. Continue.", possibly followed by a note to
+take into account. On approval, write step 6 `active` (or `skipped`, below) before anything else.
+Answer design questions. Re-run the architect if the shape changes, and have it rewrite the file; do
+not patch a plan you no longer believe in.
 
 ## 6. Tester — red
 
@@ -109,6 +140,9 @@ Task the `flow:tester` agent with the approved test list from `.flow-plan.md`. T
 the behaviour is missing, not because they do not compile.
 
 Build with `verify.targeted` — one test target. Never the whole project here.
+
+If the plan's test list is empty — a change with no behaviour to pin down, such as a comment, build
+or documentation fix — write step 6 `skipped` and go on to the implementer.
 
 ## 7. Implementer — green
 
@@ -125,15 +159,17 @@ which is the point. Route real findings back to the implementer; ignore anything
 
 ## 9. Gate build
 
-Run **every** command in `verify.gate`. A change that compiles on one build system and not the other
-is not done. Fix and re-run until clean.
+Run **every** command in `verify.gate`. A change that builds in one configuration and not another is
+not done. Fix and re-run until clean.
 
 ## 10. Format — last
 
-Run `verify.format`, then `verify.scripts` and `verify.pbxproj` if they apply. This step rewrites file
-mtimes and forces a full rebuild next time, which is why it is last and not continuous.
+Run `verify.format`, then each entry in `verify.extra` whose condition applies to this change (an
+entry says when it applies, after a `#`). This step rewrites file mtimes and forces a full rebuild
+next time, which is why it is last and not continuous.
 
-Then stamp it, or the commit gate will block the MR step:
+Then stamp it, or the commit gate will block the MR step. With no `verify.format` configured, write
+step 10 `skipped` but still stamp:
 
 ```
 touch "$(git rev-parse --git-dir)/flow-formatted"
@@ -156,16 +192,17 @@ to be worth reading that way before it stops here.
    `--force-with-lease`. Never a bare `--force`; the guard blocks it.
 3. **Stop.** Write the progress file with `status: waiting`. Say in one line how many commits there
    are and that they are on the remote, and that the user can go through them under Review commits.
-   Marks the user submits from that page arrive as one message: act on them, keep the series
-   readable (fold a fix into the commit it belongs to), push again with `--force-with-lease` after a
-   backup tag, and stop again. Do not open the merge request until the user approves; Helm's **Approve
+   Marks the user submits from that page arrive as one message: write step 11 `active`, act on them,
+   keep the series readable (fold a fix into the commit it belongs to), push again with
+   `--force-with-lease` after a backup tag, and stop again with `waiting`. Do not open the merge request until the user approves; Helm's **Approve
    commits** button types "The commits are approved. Open the merge request."
 
 Nothing else is squashed or opened here.
 
 ## 12. MR
 
-On approval, task `flow:mr-creator`. It squashes, pushes with `--force-with-lease` (the branch is
-already on the remote from step 11), opens the MR titled `{issue} - What was fixed` with the fixed
-description layout, assigns the user and **no reviewers**, and returns the link. It does not edit
-source.
+On approval, write step 12 `active` and task `flow:mr-creator`. It squashes, pushes with
+`--force-with-lease` (the branch is already on the remote from step 11), opens the MR titled
+`{issue} - What was fixed` with the description from `mr.template`, sets assignee and reviewers from
+`mr.assignee` and `mr.reviewers`, and returns the link. It does not edit source. Then write step 12
+`done`.
