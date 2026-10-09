@@ -93,7 +93,8 @@ token estimate, and **wait**.
 First the reading, on the cheap model. Fan out `flow:researcher` agents **in parallel**, one per area
 the issue touches (the subsystem named in the issue, its tests, its callers, a comparable past change).
 Each gets one question and returns a factual brief. Reading is most of the tokens in planning and needs
-no judgement, which is why it runs on Sonnet while the thinking below does not.
+no judgement, which is why it runs on Sonnet. The judgement stays with you, the session running this
+chain: you choose the questions, weigh the briefs, and read the plan before the user does.
 
 Then task the `code-architect` agent (from `feature-dev`) with the issue **and the briefs**. It must
 produce, and must not write code, the **plan document**, in this order and under these headings. The

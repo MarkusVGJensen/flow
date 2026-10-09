@@ -61,7 +61,7 @@ them runs uninterrupted.
 ```mermaid
 flowchart TD
   A["1-2 Issue and worktree"] --> R{"3 extent-router"}
-  R -- "one session or subagents" --> P["4 Research and plan"]
+  R -- "one session or subagents" --> P["4 Researchers ×N on Sonnet,<br/>then the architect"]
   R -- "team or workflow" --> Q["Stop: show cost, ask"]
   Q -- "approved" --> P
   P --> G1[["5 Gate: approve the plan"]]
@@ -76,12 +76,65 @@ flowchart TD
 
 - **Plan.** Cheap `researcher` agents read the areas the issue touches in parallel; `code-architect`
   turns their briefs into `.flow-plan.md`: the issue, the fix, Mermaid UML, the files, the test list,
-  mockups when there is a UI, and what done means.
+  mockups when there is a UI, and what done means. See [Cheap reading, careful thinking](#cheap-reading-careful-thinking).
 - **Commits.** Before the second gate the branch is shaped into commits that read one at a time and
   pushed, so you can go through them before the MR exists. The MR step then squashes.
 - **Progress.** Each step is written to `.flow-state.json` in the worktree as it starts (`active`),
   finishes (`done`), is skipped (`skipped`) or stops at a gate (`waiting`). A session that dies or is
   compacted resumes from it, and `/flow:status` and front ends read it.
+
+## Cheap reading, careful thinking
+
+Planning is shaped like a sandwich: the strong model at both ends, the cheap model in the middle.
+Your own session, on whatever model you run Claude Code with (Fable, for example), decides what needs
+reading and turns it into one question per area. Several `researcher` agents on Sonnet read in
+parallel and each answers with a short factual brief. The briefs go back up to the strong model, which
+weighs them and owns the plan you are shown.
+
+```mermaid
+flowchart LR
+  Q["Your session, e.g. Fable<br/>splits the issue<br/>into questions"]
+  subgraph fan["Sonnet, in parallel"]
+    R1["researcher<br/>the subsystem"]
+    R2["researcher<br/>its tests"]
+    R3["researcher<br/>its callers"]
+    R4["researcher<br/>a past change"]
+  end
+  D["Your session, e.g. Fable<br/>weighs the briefs,<br/>owns the plan"]
+  G[["You approve<br/>the plan"]]
+  Q --> R1
+  Q --> R2
+  Q --> R3
+  Q --> R4
+  R1 -- brief --> D
+  R2 -- brief --> D
+  R3 -- brief --> D
+  R4 -- brief --> D
+  D --> G
+```
+
+Fable, then Sonnets, then Fable: the expensive model asks and decides, the cheap one does the reading
+in between.
+
+What that buys:
+
+- **Cost.** The bulk reading runs on the cheaper model, and only the briefs reach the agents that
+  decide. A brief is a page where the files behind it are thousands of lines.
+- **Context.** The session that runs the chain and the architect see the findings, not the raw files,
+  so their context stays small and focused for the rest of the issue.
+- **Time.** Four researchers reading at once finish in roughly the time of one.
+
+Inside the second half, your session has `feature-dev`'s `code-architect` draft the plan document
+from the issue and the briefs, on the model that plugin gives it, and reads that draft before it
+reaches you. After the gate, the agents that change code or judge it (the tester, the implementer,
+the reviewer and the MR creator) run on Opus. Each agent's model is the
+`model:` line of its file under `agents/`, if you want to trade differently.
+
+How many researchers run is the extent-router's call (see below): a one-file fix gets none, and the
+session reads the code itself.
+
+Reviews of other people's MRs fan out too, to the `pr-review-toolkit` lenses, but those are review
+judgements rather than reading, and run on the models that plugin gives them.
 
 ## Agents
 
