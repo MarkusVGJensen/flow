@@ -42,7 +42,7 @@
     "build": "opus",
     "review": "opus",
     "lenses": null,
-    "mr": "opus"
+    "mr": "sonnet"
   },
 
   "//learn": "After the MR is open: \"ask\" offers to fold what this issue taught into CLAUDE.md (claude-md-management), \"off\" never does.",

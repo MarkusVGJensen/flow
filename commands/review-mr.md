@@ -1,7 +1,7 @@
 ---
 description: "Review someone else's merge request and post line-anchored draft comments"
 argument-hint: "<mr-id> [--hold] [note]"
-allowed-tools: ["Bash", "Glob", "Grep", "Read", "Write", "Task", "Skill"]
+allowed-tools: ["Bash", "Glob", "Grep", "Read", "Write", "Agent", "Skill"]
 ---
 
 # Review a merge request
@@ -54,7 +54,7 @@ the MR did not touch — a pre-existing problem is not this author's to fix.
 
 ## 4. Build only if a finding needs it
 
-Most findings come from the diff and its neighbours. Build (via the skills named in `verify.gate`)
+Most findings come from the diff and its neighbours. Build (with the commands in `verify.gate`)
 only when you need to confirm a specific claim, and say in the report that you did.
 
 ## 5. Fan out — as wide as the diff deserves, no wider
@@ -63,7 +63,7 @@ Size first. A one-file fix gets `code-reviewer` alone. The table below is the ce
 diff, not the default, and the note wins over the table: "focus on the threading" means the lenses that
 bear on threading and nothing else.
 
-Launch the chosen `pr-review-toolkit` agents **in parallel**, one Task call per lens, each given the
+Launch the chosen `pr-review-toolkit` agents **in parallel**, one Agent call per lens, each given the
 changed file list and told to review only those files, and with `models.lenses` from the config as
 the model when it is set:
 
@@ -74,7 +74,6 @@ the model when it is set:
 | `pr-test-analyzer` | test files changed, or behaviour changed without tests |
 | `comment-analyzer` | comments or docs changed |
 | `type-design-analyzer` | new or modified types |
-| `code-simplifier` | always, last |
 | `security-review` skill | input parsing, auth, file paths, shell or SQL built from data, deserialization, secrets or network handling changed. A skill, not an agent: invoke it yourself, on the diff between `base_sha` and `head_sha`, alongside the agents |
 
 ## 6. Filter hard

@@ -30,7 +30,13 @@ What flow adds to Claude Code:
 
 flow is not tied to a language, build system or forge. Project conventions come from your
 `CLAUDE.md`, and commands and preferences from one config file. GitLab (`glab`) and GitHub (`gh`) are
-both supported.
+both supported; GitHub support is not complete yet, and `review-mr`, `resolve-comments` and
+`watch-pipeline` still speak GitLab only.
+
+flow is always used together with [Helm](https://github.com/MarkusVGJensen/helm-releases), its
+desktop front end: a tab per issue, the review queue, the step timeline, the plan and commit review
+pages, and one-click worktrees. The commands write the files Helm reads (`.flow-state.json`,
+`.flow-plan.md`, `.flow-notes.json`) and understand the messages its buttons send.
 
 ## Contents
 
@@ -108,10 +114,8 @@ both supported.
 </table>
 
 3. Install the [companion plugins](#companion-plugins).
-4. In a Claude Code session in your checkout, run `/flow:start-issue 128`.
-
-For a desktop front end, with a tab per issue, the review queue, a step timeline and one-click
-worktrees, see [Helm](https://github.com/MarkusVGJensen/helm-releases).
+4. Install [Helm](https://github.com/MarkusVGJensen/helm-releases) from its releases.
+5. Start an issue from Helm, or in a Claude Code session in your checkout run `/flow:start-issue 128`.
 
 ---
 
@@ -162,7 +166,7 @@ flowchart TD
 | `tester` | Opus | edit, LSP | Writes the planned tests and checks they fail for the right reason. Never touches production code |
 | `implementer` | Opus | edit, LSP | Makes the failing tests pass, inside the files the plan names. Never edits a test |
 | `reviewer` | Opus | read, LSP | Reviews the diff against `CLAUDE.md` without having seen it being written. Reports, never edits |
-| `mr-creator` | Opus | git only | Squashes the commits, pushes, and opens the MR from your template |
+| `mr-creator` | Sonnet | git only | Squashes the commits, pushes, and opens the MR from your template |
 
 ## Companion plugins
 
@@ -434,9 +438,13 @@ change.
 Some rules are too important to leave to the model remembering them, so they are `PreToolUse` hooks
 on Bash that run before every shell command:
 
-- **Format gate.** Blocks `git commit` when source files changed after the formatter last ran. The
+- **Format gate.** In a flow worktree (one with a `.flow-state.json`), blocks `git commit` when a
+  changed file was edited after the formatter last ran. Docs, data and binaries do not count. The
   format step leaves a stamp file, `$(git rev-parse --git-dir)/flow-formatted`, that the hook checks.
-- **Bash guard.** Blocks `git push --force` without `--force-with-lease`. When `verify.formatGuard`
+  Outside flow worktrees it does nothing.
+- **Bash guard.** Blocks a force push without a lease: `git push --force`, `-f`, or a `+` refspec
+  such as `git push origin +main`. `--force-with-lease` is allowed, and a commit message that only
+  mentions a force push is not blocked. When `verify.formatGuard`
   names the project's tree-wide formatter, it also blocks running it over the whole tree unless the
   command is acknowledged with `FLOW_TREEWIDE_OK=1`.
 
@@ -455,7 +463,7 @@ most `ci.attempts` times. A known flaky test is retried instead.
 Each step of `start-issue` is written to `.flow-state.json` in the worktree as it starts (`active`),
 finishes (`done`), is skipped (`skipped`) or stops at a gate (`waiting`). Run `/flow:start-issue` again
 after a crash, a context compaction or a night's sleep, and it continues from there. `/flow:status`
-and front ends such as Helm read the same file.
+and Helm read the same file.
 
 ---
 
@@ -526,7 +534,7 @@ flowchart TD
   F --> D{"--hold?"}
   D -- "no" --> P["Draft comments on the MR,<br/>plus one summary"]
   D -- "yes" --> H[(".flow-notes.json,<br/>a severity each")]
-  H --> FE["A front end such as Helm:<br/>you prune, then post"]
+  H --> FE["Helm:<br/>you prune, then post"]
 ```
 
 - **Only as wide as needed.** A one-file fix gets `code-reviewer` alone. Your note outranks the
@@ -546,7 +554,7 @@ config changes it.
 | Tests and code (6-7) | `tester`, `implementer` | Opus | Edits and test runs; `verify.syntaxCheck` keeps the loop cheap |
 | Self-review (8) | `code-simplifier`, `reviewer`, `security-review` | plugin's, Opus, yours | One read of the diff each; security only on risky diffs |
 | Build and format (9-10) | your session | yours | Command output, once each |
-| Commits and MR (11-12) | your session, `mr-creator` | yours, Opus | Small |
+| Commits and MR (11-12) | your session, `mr-creator` | yours, Sonnet | Small |
 | CI | `wait-ci.sh` | none | Nothing while CI runs |
 | Team or workflow | many | per agent | Only after you approve the estimate |
 

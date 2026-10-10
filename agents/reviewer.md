@@ -50,11 +50,10 @@ Read `CLAUDE.md` and any nested `CLAUDE.md` covering the changed paths. Score ea
 - Anything that got noticeably more complex. Say what the simpler shape would be, and its cost.
 - A change that builds in one configuration or on one platform when the project has several.
 
+## Symbols
 
-**Use the language server when there is one.** With a code-intelligence plugin installed (clangd-lsp,
-pyright-lsp, …) the `LSP` tool answers "where is this defined", "who calls this" and "what type is
-this" exactly, in one call. Prefer it to grep sweeps for symbols; grep stays right for text, config
-and comments.
+When a language server is installed, use the `LSP` tool for definitions, callers and types: it is
+exact and one call. Grep is for text, config and comments.
 
 ## Output
 

@@ -1,7 +1,7 @@
 ---
 description: "Watch a pipeline until green, fixing real failures and retrying flaky ones"
 argument-hint: "[mr-id]"
-allowed-tools: ["Bash", "Glob", "Grep", "Read", "Edit", "Task"]
+allowed-tools: ["Bash", "Glob", "Grep", "Read", "Edit", "Agent"]
 ---
 
 # Watch the pipeline
@@ -30,11 +30,10 @@ Do not poll by hand: every check would be a model turn. The plugin ships a waite
 own and only returns when CI has finished:
 
 ```
-sh "<plugin root>/scripts/wait-ci.sh" <forge> <project> <mr> <ci.pollMinutes × 60> 25
+sh "${CLAUDE_PLUGIN_ROOT}/scripts/wait-ci.sh" <forge> <project> <mr> <ci.pollMinutes × 60> 25
 ```
 
-`<plugin root>` is the folder this command came from (`~/.claude/skills/flow` for a clone). Start it
-with the Bash tool's `run_in_background: true` and end your turn with one line saying what you are
+Start it with the Bash tool's `run_in_background: true` and end your turn with one line saying what you are
 waiting for. It prints `status <s>` on each change and exits:
 
 - `done success` — green. Report and stop.
@@ -66,10 +65,12 @@ glab ci trace <job-id>          # or: glab api "projects/<enc>/jobs/<id>/trace"
 1. Read the trace and find the actual error — not the first red line, the cause.
 2. Fix it in the worktree. Verify locally with `verify.targeted` **if the platform allows**. A job
    matching `ci.blindJobPattern` cannot be verified locally; say so explicitly in every report.
-3. Amend into the commit that introduced the fault — normally the single squashed commit — so the
+3. Format the files you changed with `verify.format`, then
+   `touch "$(git rev-parse --git-dir)/flow-formatted"`, or the format gate blocks the amend.
+4. Amend into the commit that introduced the fault — normally the single squashed commit — so the
    branch stays one readable change and not a trail of CI fixes.
-4. **Tag first:** `git tag backup/<branch>-$(date +%Y%m%d-%H%M%S)`
-5. Push: `git push --force-with-lease`
+5. **Tag first:** `git tag backup/<branch>-$(date +%Y%m%d-%H%M%S)`
+6. Push: `git push --force-with-lease`
 
 `--force-with-lease`, never `--force`. If the lease fails, the remote moved — someone else pushed, or
 another worktree did. **Stop and report.** Do not re-fetch and retry; that is how you overwrite work.

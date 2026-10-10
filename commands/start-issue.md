@@ -1,7 +1,7 @@
 ---
 description: "Take an issue from a worktree to a merge request, stopping twice for approval"
 argument-hint: "<issue-id> [extent]"
-allowed-tools: ["Bash", "Glob", "Grep", "Read", "Write", "Edit", "Task", "Skill"]
+allowed-tools: ["Bash", "Glob", "Grep", "Read", "Write", "Edit", "Agent", "Skill"]
 ---
 
 # Start an issue
@@ -12,14 +12,15 @@ the pushed commits. Between them, do not ask permission for ordinary work.
 ## 0. The progress file
 
 `<worktree>/.flow-state.json` records how far this issue has come, so a session that dies, is
-compacted, or is resumed tomorrow picks up at the right step instead of starting over. Helm draws its
-step timeline from it, so keep it current:
+compacted or comes back tomorrow resumes at the right step. Helm draws its step timeline from it and
+`/flow:status` reads it, so keep it current:
 
 ```json
 {"issue": 128, "branch": "me/128-slug", "step": 6, "name": "tester", "status": "active", "at": "2026-09-14T10:12:00Z"}
 ```
 
-`step` is the number of the step below, `name` its name from this list, `at` the UTC time of the write:
+`step` and `name` come from this list; `at` is the UTC time of the write; keep `issue` and `branch`
+in every write.
 
 | step | name | | step | name |
 | --- | --- | --- | --- | --- |
@@ -30,32 +31,25 @@ step timeline from it, so keep it current:
 | 5 | `plan-gate` | | 11 | `commits-gate` |
 | 6 | `tester` | | 12 | `mr` |
 
-`status` is exactly one of:
+`status` is one of:
 
-- `active` — written at the **start** of a step, before any of its work.
-- `done` — written when the step has finished.
-- `waiting` — written at a gate (5 and 11) just before you stop for the user.
-- `skipped` — written for a step that does not apply this time, before moving on: no tests in the
-  plan's test list skips the tester, an empty `verify.gate` skips the gate build, and so on. Say why
-  in one line in the terminal.
+- `active` — at the **start** of a step, before any of its work.
+- `done` — when the step has finished.
+- `waiting` — at a gate (5 and 11), just before you stop for the user. Their approval finishes the
+  gate: write the **next** step `active` straight away.
+- `skipped` — for a step that does not apply this time (an empty test list skips the tester, an empty
+  `verify.gate` the gate build). Say why in one line.
 
-When the user approves a gate, write the **next** step as `active` straight away; the approval is
-what finishes the gate. Keep `issue` and `branch` in every write.
+How to write it:
 
-- **Write it atomically**: write the whole object to `.flow-state.json.tmp` in the worktree, then
-  rename it over the real file (`mv -f .flow-state.json.tmp .flow-state.json`), so a reader never
-  sees half a file.
-- The file lives in the worktree, which exists from step 2. Its first write is step 2 `done`; steps
-  before that are not recorded.
-- The first time you create it, keep it and its temp file out of the diff:
-  `echo .flow-state.json >> "$(git rev-parse --git-dir)/info/exclude"`, and the same for
-  `.flow-state.json.tmp`.
-- **Before step 2**, if the worktree for this issue already exists and holds this file, say in one line
-  where you are resuming from. A step marked `done` or `skipped` is not redone: continue with the next.
-  A step marked `active` was interrupted: look at what it left in the worktree and finish it. A gate
-  marked `waiting` means the user has not approved yet: show them the plan or the commits again and
-  wait.
-- `/flow:status` and Helm's timeline read this file. Nothing else does.
+- **Atomically:** write `.flow-state.json.tmp`, then `mv -f .flow-state.json.tmp .flow-state.json`.
+- **From step 2 on**, since the worktree holds it; its first write is step 2 `done`.
+- **Out of the diff:** on the first write, add `.flow-state.json` and `.flow-state.json.tmp` to
+  `"$(git rev-parse --git-dir)/info/exclude"`.
+
+**Resuming.** Before step 2, if this issue's worktree already holds the file, say in one line where you
+resume. `done` or `skipped`: continue with the next step. `active`: the step was interrupted; look at
+what it left and finish it. `waiting`: show the plan or the commits again and wait.
 
 ## Models
 

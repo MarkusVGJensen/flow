@@ -7,8 +7,12 @@ set -u
 payload=$(cat | tr '\n' ' ')
 
 # 1. A force push without a lease can overwrite someone else's work. --force-with-lease is allowed;
-#    it is what /flow:watch-pipeline uses after tagging a backup.
-if printf '%s' "$payload" | grep -Eq 'git +push[^"]* (--force|-f)( |\\|"|$)'; then
+#    it is what /flow:watch-pipeline uses after tagging a backup. `git push` counts only where a
+#    command starts (the start of the command, or after ; & |), so a commit message that mentions
+#    it is not blocked. A `+` refspec (`git push origin +main`) is a force push too.
+push='("command"[[:space:]]*:[[:space:]]*"|[;&|])[[:space:]]*git +push[^";&|]*'
+if printf '%s' "$payload" | grep -Eq "$push"' (--force|-f)([ ";&|\]|$)' \
+   || printf '%s' "$payload" | grep -Eq "$push"' \+[^ "]'; then
   echo "Blocked: 'git push --force' without a lease." >&2
   echo "Use 'git push --force-with-lease' after 'git tag backup/<branch>-<stamp>', and only on your own branch." >&2
   echo "If the lease fails, the remote moved: stop and report, do not retry." >&2

@@ -1,7 +1,7 @@
 ---
 description: "Act on the review comments left on your merge request"
 argument-hint: "<mr-id>"
-allowed-tools: ["Bash", "Glob", "Grep", "Read", "Edit", "Task"]
+allowed-tools: ["Bash", "Glob", "Grep", "Read", "Edit", "Agent"]
 ---
 
 # Resolve review comments
@@ -35,7 +35,8 @@ Route real fixes through the implementer, tests first where behaviour changes, w
 ## 4. One commit
 
 Everything lands as a single commit named `Resolve comments`. Never amend the reviewed commits — the
-reviewer needs to see what changed since they looked.
+reviewer needs to see what changed since they looked. Push it with a plain `git push`: nothing is
+rewritten, so no lease or backup tag is needed.
 
 ## 5. Report
 

@@ -36,11 +36,10 @@ edits to one file cost more than writing the file once, and they read worse in a
 - Never `Write` a file you have not read in full in this session. Never "clean up" lines the plan did
   not ask you to touch while you are in there.
 
+## Symbols
 
-**Use the language server when there is one.** With a code-intelligence plugin installed (clangd-lsp,
-pyright-lsp, …) the `LSP` tool answers "where is this defined", "who calls this" and "what type is
-this" exactly, in one call. Prefer it to grep sweeps for symbols; grep stays right for text, config
-and comments.
+When a language server is installed, use the `LSP` tool for definitions, callers and types: it is
+exact and one call. Grep is for text, config and comments.
 
 ## Output
 

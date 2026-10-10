@@ -18,11 +18,10 @@ and `project`. If neither file exists, say so and stop — do not guess a projec
 ## 2. Fetch in one call
 
 ```
-ME=$(glab api user | python -c "import sys,json;print(json.load(sys.stdin)['username'])")
-glab api "projects/<url-encoded project>/merge_requests?state=opened&reviewer_username=$ME&per_page=50"
+glab mr list --repo <project> --reviewer=@me --per-page 50 --output json
 ```
 
-Encode the project path (`group/repo` → `group%2Frepo`). For `forge: gh`, use
+Each MR carries `iid`, `title`, `author.username`, `draft` and `has_conflicts`. For `forge: gh`, use
 `gh pr list --search "review-requested:@me" --json number,title,author,isDraft,mergeable`.
 
 ## 3. Render

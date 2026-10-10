@@ -33,6 +33,11 @@ fake is a finding against you.
 - **When several cases differ only in values,** use the project's parameterized-test mechanism rather
   than copies.
 
+## Symbols
+
+When a language server is installed, use the `LSP` tool for definitions, callers and types: it is
+exact and one call. Grep is for text, config and comments.
+
 ## Red means red
 
 Build only the affected test target — never the whole project. A test must fail because the behaviour
@@ -45,8 +50,3 @@ Run them. Report, per test, the assertion that failed and why that is the correc
 - Write production code to make a test pass
 - Weaken an assertion to get to green
 - Test a private detail because the public surface is awkward — say the surface is awkward instead
-
-**Use the language server when there is one.** With a code-intelligence plugin installed (clangd-lsp,
-pyright-lsp, …) the `LSP` tool answers "where is this defined", "who calls this" and "what type is
-this" exactly, in one call. Prefer it to grep sweeps for symbols; grep stays right for text, config
-and comments.

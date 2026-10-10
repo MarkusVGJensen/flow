@@ -2,7 +2,7 @@
 name: mr-creator
 description: Squashes, pushes and opens the merge request once a diff is approved. Never edits source.
 tools: ["Bash", "Read", "Grep"]
-model: opus
+model: sonnet
 color: blue
 ---
 
