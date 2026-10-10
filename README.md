@@ -40,6 +40,7 @@ both supported.
   - [Commands](#commands)
   - [Agents](#agents)
   - [Companion plugins](#companion-plugins)
+    - [Why the language server matters](#why-the-language-server-matters)
 - **The Claude Code features it uses**
   - [A short introduction](#a-short-introduction-to-the-claude-code-features)
   - [Where flow uses each one](#where-flow-uses-each-one)
@@ -170,9 +171,43 @@ flow leans on these first-party plugins from `claude-plugins-official`. Install 
 - **code-simplifier**: the first self-review pass.
 - **claude-md-management**: folds lessons from an issue into `CLAUDE.md`.
 - **A language server plugin** for your language (`clangd-lsp`, `pyright-lsp`, …). The agents use it
-  to look up symbols directly instead of searching the whole tree with grep.
+  to look up symbols directly instead of searching the whole tree with grep. See
+  [why the language server matters](#why-the-language-server-matters).
 
 `security-review` is built into Claude Code and needs no install.
+
+### Why the language server matters
+
+LSP is the Language Server Protocol. A language server (clangd for C and C++, pyright for Python,
+rust-analyzer for Rust, …) understands your code the way the compiler does; it is what powers "Go to
+definition" and "Find all references" in an editor. With a language server plugin installed, Claude
+Code gives agents an `LSP` tool that asks it questions directly:
+
+- **Where is this defined?** The real definition, not a list of guesses.
+- **Who calls this?** Every actual reference, not every line that contains the same word.
+- **What type is this?** The resolved type, including inferred and templated ones.
+- **What is in this file?** An outline of its symbols, without reading the whole file.
+
+The `researcher`, `tester`, `implementer` and `reviewer` agents have the tool and prefer it for
+questions about symbols. Grep stays the right tool for plain text, config and comments. Without a
+language server installed the tool has nothing to talk to, and the agents simply fall back to grep.
+
+**In a large monolithic repository this matters most.** There, grep is both expensive and
+imprecise:
+
+- **Noise grows with the repo.** A common name such as `update` or `Config` matches thousands of
+  lines across hundreds of files: comments, strings, unrelated classes with the same method name.
+  The agent has to open those files to tell the real hits from the false ones.
+- **Every file opened costs tokens and context.** Sorting through grep hits fills the agent's context
+  with code it will not use, which leaves less room for the work and makes it lose the thread.
+- **Text search misses real uses.** Calls through a typedef, an overload, a macro, a template or an
+  interface do not always contain the name being searched for, so a grep sweep can look complete and
+  still miss the caller that breaks.
+- **One call instead of a sweep.** The language server has already indexed the whole tree, so "who
+  calls this?" is a single exact answer however big the repository is.
+
+The result is cheaper research, smaller contexts, and plans and reviews built on the real call graph
+rather than on whatever a text search happened to find.
 
 ---
 
