@@ -51,6 +51,9 @@ both supported.
   - [Red tests, then green](#red-tests-then-green)
   - [Review in fresh context](#review-in-fresh-context)
   - [Sizing the job: the extent router](#sizing-the-job-the-extent-router)
+    - [Agent team](#agent-team)
+    - [Dynamic workflow](#dynamic-workflow)
+    - [Side by side](#side-by-side)
   - [Hooks as guard rails](#hooks-as-guard-rails)
   - [Waiting without the model](#waiting-without-the-model)
   - [Progress you can resume from](#progress-you-can-resume-from)
@@ -361,6 +364,70 @@ flowchart LR
 For one session or subagents it goes ahead without comment. For a team or a workflow it stops, says
 what it would run and roughly what that costs, and waits for your yes. `/flow:start-issue` runs it
 before planning; Claude may also pick it up on its own when a task looks like it needs many agents.
+
+Most issues stop at subagents: the researchers, tester, implementer and reviewer are each started for
+one job and only report back to your session, never to each other. The two rungs above that differ
+mainly in **who coordinates the agents**: the agents themselves, or a script.
+
+### Agent team
+
+One lead session plus several **teammates**, each a full Claude Code session with its own context
+window, tools and model.
+
+- **The lead plans and hands out work.** It splits the job, starts the teammates and assigns each one
+  a strand.
+- **They share a task list.** Teammates claim tasks, mark them done and can see what the others are
+  working on.
+- **They talk to each other directly.** Teammates message each other and the lead, not only the
+  lead: "I changed the interface in `Parser`, adjust your side."
+- **They run long and side by side.** Each strand moves forward on its own, and the teammates check in
+  where their work touches.
+- **The lead brings it together.** It collects the results, settles conflicts and reports to you.
+
+**Cost:** roughly one full session per teammate, so four teammates cost about four sessions.
+**Fits when** a few strands must compare notes along the way: a feature that touches backend,
+frontend and migrations together, a review from several angles where reviewers challenge each
+other's findings, or research where one result changes where the next one looks. **Goes wrong when**
+teammates spend more time waiting on each other than working; then collapse back to subagents.
+
+### Dynamic workflow
+
+A **script** orchestrates the agents. Claude writes a small JavaScript program, the Workflow tool runs
+it in the background, and the script decides which agents to start, with what prompt, in what order,
+and what to do with their answers.
+
+- **Each agent is a one-shot worker.** It gets one prompt, does its job and returns a result, often in
+  a fixed shape defined by a schema.
+- **Agents do not talk to each other.** Data moves only through the script: one stage's output is the
+  next stage's input.
+- **The script sets the shape.** `parallel(...)` fans out over many items at once, such as one agent
+  per package. `pipeline(...)` moves each item through stages (migrate, build, verify) as soon as its
+  previous stage is done. Ordinary code in between filters, deduplicates, retries or stops early.
+- **It is repeatable and resumable.** The same script gives the same orchestration. Rerun after a
+  stop, finished agent calls come back from cache and only changed or new ones run again.
+- **It scales past one conversation.** Dozens to hundreds of agents, because the coordination lives
+  in code rather than in one model's context.
+
+**Cost:** one agent run per item per stage; migrating 200 files with a check stage is 400 or more.
+**Fits when** the work is a mechanical change across a large surface (a codebase-wide rename, an API
+migration, a lint fix everywhere), or several independent attempts at one hard question that are then
+compared.
+
+### Side by side
+
+| | Agent team | Dynamic workflow |
+| --- | --- | --- |
+| Coordinated by | The lead session, in conversation | A script |
+| Agents talk to each other | Yes, directly | No, only through the script |
+| Agent lifetime | Long-running, takes several tasks | One prompt, one result |
+| Typical size | 2 to 5 teammates | Dozens to hundreds |
+| Best for | A few strands that must keep in sync | Many independent, similar pieces |
+| Repeatable | No, each run plays out differently | Yes, rerun or resume the script |
+
+Because both multiply the cost, the extent router never starts either on its own: it states the
+agents, the rough cost and what the cheaper option would miss, and waits. The `extent-router-large`
+eval pins that down. Agent teams are an experimental Claude Code feature, so their details may
+change.
 
 ## Hooks as guard rails
 
