@@ -448,6 +448,9 @@ on Bash that run before every shell command:
   names the project's tree-wide formatter, it also blocks running it over the whole tree unless the
   command is acknowledged with `FLOW_TREEWIDE_OK=1`.
 
+Both hooks check the directory a command actually acts in, not just the session's: a
+`cd <worktree> && git commit` or a `git -C <worktree> commit` is checked against that worktree.
+
 ## Waiting without the model
 
 A model that polls CI pays for every check. `/flow:watch-pipeline` instead starts

@@ -5,6 +5,15 @@
 # The stamp is written by the flow's format step:  touch "$(git rev-parse --git-dir)/flow-formatted"
 
 set -u
+. "$(dirname "$0")/command-dir.sh"
+payload=$(cat | tr '\n' ' ')
+
+# Only a commit is gated. Matched here rather than with the hook's `if`, which would miss
+# `git -C <dir> commit`.
+hook_command "$payload" | grep -Eq "$(git_call commit)" || exit 0
+
+# Check the repository the commit lands in, not the session's directory.
+here=$(command_dir "$payload" commit) && cd "$here" 2>/dev/null || exit 0
 
 root=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0   # not a repo: not our business
 gitdir=$(git rev-parse --git-dir 2>/dev/null) || exit 0

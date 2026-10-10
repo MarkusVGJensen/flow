@@ -4,6 +4,7 @@
 # pattern check. Exit 0 allows; exit 2 blocks and shows stderr to Claude.
 
 set -u
+. "$(dirname "$0")/command-dir.sh"
 payload=$(cat | tr '\n' ' ')
 
 # 1. A force push without a lease can overwrite someone else's work. --force-with-lease is allowed;
@@ -22,9 +23,11 @@ fi
 # 2. A tree-wide formatter run rewrites every mtime, and a parallel formatter that fails midway can
 #    leave files it never meant to touch modified or damaged. Per-file runs are fine. Which script that is belongs to the project, so the pattern comes from the flow config:
 #    `verify.formatGuard`, an extended regex matched against the command. No value, no guard.
+#    The config is looked up where the command acts, which a leading `cd` may have moved.
+here=$(command_dir "$payload")
 config=""
-if [ -f .claude/flow.json ]; then
-  config=.claude/flow.json
+if [ -f "$here/.claude/flow.json" ]; then
+  config="$here/.claude/flow.json"
 elif [ -f "$HOME/.claude/flow.local.json" ]; then
   config="$HOME/.claude/flow.local.json"
 fi
