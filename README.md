@@ -618,6 +618,23 @@ the agent, and an HTML comment holds instructions for the agent that are left ou
 `evals/` holds [plugin evals](https://code.claude.com/docs/en/plugin-evals): small cases that run in
 a clean sandbox with and without flow loaded, so each one shows what flow changes.
 
+**About `claude plugin eval`.** It is part of the Claude Code CLI, made for plugin authors to test
+their own plugins; nothing is submitted to or reviewed by Anthropic. It runs on your machine with
+your own credentials, so every run and every model-judged grader counts against your plan or API
+bill. Think of it as behaviour tests rather than unit tests: each case gives Claude a realistic
+prompt and checks what it did. Because the model is not deterministic:
+
+- **Each case runs several times** (3 by default) and must reach `--threshold` (1.0 by default).
+- **A no-plugin baseline runs too**, and the report shows the score with flow, without it, and the
+  difference.
+- **Graders decide pass or fail.** `regex`, `tool_used`, `tool_order` and `file_exists` are computed
+  from the transcript and cost nothing; `llm` and `baseline` ask a judge model.
+
+It exits 0 when every case passes, 1 when one falls short and 2 when `--max-cost-usd` stopped it, so
+it can gate CI; pin `--model` and `--judge-model` there so a model update is not mistaken for a
+regression. Cases that grant Bash run under Claude Code's OS sandbox, which on Windows means WSL2;
+flow's current cases use read-only tools only.
+
 | Case | Checks that |
 | --- | --- |
 | `extent-router-small` | A one-line fix stays in one session, and the skill fires |
