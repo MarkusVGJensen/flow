@@ -40,7 +40,9 @@ exact and one call. Grep is for text, config and comments.
 
 ## Red means red
 
-Build only the affected test target — never the whole project. A test must fail because the behaviour
+Build only the affected test target — never the whole project — and through the lock script whose
+path you were given (`sh <with-build-lock.sh> <command>`): it waits while another build holds the
+tree. A test must fail because the behaviour
 is missing, **not** because it does not compile. A compile error is not a red test; fix it.
 
 Run them. Report, per test, the assertion that failed and why that is the correct failure.

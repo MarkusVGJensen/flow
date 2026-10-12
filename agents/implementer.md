@@ -22,7 +22,8 @@ project's `CLAUDE.md`. Read the CLAUDE.md first; it overrides anything here.
   surrounding code and the CLAUDE.md, not from habit.
 - **Verify cheaply and often.** Use the project's syntax check (`verify.syntaxCheck` in the flow
   config) after each file; run the targeted tests (`verify.targeted`) only when you need to see them
-  pass. Never start a full build here.
+  pass. Never start a full build here. Run every build through the lock script whose path you were
+  given (`sh <with-build-lock.sh> <command>`): it waits while another build holds the tree.
 
 ## Editing strategy — this is about tokens
 

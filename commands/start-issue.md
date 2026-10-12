@@ -59,6 +59,26 @@ the tester and the implementer, `models.review` for the simplifier and the revie
 the MR creator. A missing or null entry passes nothing, and the agent's own file decides. You, the
 session running this chain, stay on whatever model the user started you on.
 
+## Builds take turns
+
+Every build in the worktree runs through the lock script, yours and the agents' alike, the early
+builds below, the tester's, the gate's:
+
+```
+sh "${CLAUDE_PLUGIN_ROOT}/scripts/with-build-lock.sh" <build command>
+```
+
+Two builds in one build tree at once corrupt it, and more than this chain builds there: Helm
+configures a new worktree and builds it while you are quiet, under the same lock. The script waits
+for whoever holds it, without you, then runs the command and exits with its status. Pass the
+script's full path to the tester and the implementer when you task them. A `skill:` entry in
+`verify` names a skill: load it and run the command it gives through the script.
+
+The full builds start as early as they can and run in the background (`run_in_background`), so
+that by the time a step needs one, all that is left is a small incremental build. Never poll one;
+its completion notice comes by itself. Send its output to a log in the git dir, not into the
+conversation, and read the log's tail only when it failed.
+
 ## 1. Config and issue
 
 Read config (`.claude/flow.json`, else `~/.claude/flow.local.json`). If neither exists, stop and say
@@ -85,6 +105,24 @@ If the path exists and holds a progress file for **this** issue, resume (step 0)
 one, ask before touching it — another session may own it.
 
 **Everything after this runs in that worktree.** Never build or edit in the directory you started in.
+
+**Start the early build.** A new worktree's build tree is empty, and its first build is the long one.
+Start it now, so it runs while you research and plan and while the user reads the plan. In the
+background, from the worktree, every command in `verify.gate` in turn, each through the lock script,
+build only (a skill that can also run tests is asked only to build):
+
+```
+gd=$(git rev-parse --absolute-git-dir)
+{ sh "${CLAUDE_PLUGIN_ROOT}/scripts/with-build-lock.sh" <gate command 1>
+  sh "${CLAUDE_PLUGIN_ROOT}/scripts/with-build-lock.sh" <gate command 2>
+} > "$gd/flow-early-build.log" 2>&1
+```
+
+Do not wait for it. It builds `origin/<defaultTarget>` as it is, so its result says nothing about
+this change: when it ends, say in one line whether it passed (a failure is the target's or this
+machine's, e.g. a platform it cannot build here) and carry on. The tester's first build waits for it
+through the lock and then has little left to do. On a resume, start it only if the build tree was
+never built. With an empty `verify.gate`, there is nothing to start.
 
 ## 3. Route the extent
 
@@ -166,6 +204,16 @@ Three passes, in this order, all on the branch's diff against `origin/<defaultTa
    production files the plan lists: same behaviour, less code, the project's idioms. It does not touch
    the tests. Re-run `verify.targeted` afterwards; a red test means the simplification changed
    behaviour, so undo that part.
+
+   **Then start the gate build**, before the review: the review and the security check only read,
+   so they run while it builds. In the background, every command in `verify.gate` as step 9 runs
+   them, each through the lock script, into `"$gd/flow-gate-build.log"` (`gd` as in step 2).
+   Note what it builds first:
+
+   ```
+   { git rev-parse HEAD; git status --porcelain; git diff HEAD
+     git ls-files -o --exclude-standard -z | xargs -0 cat; } 2>/dev/null | git hash-object --stdin
+   ```
 2. **Review.** Task the `flow:reviewer` agent on the full diff. It has not seen the implementation
    being written, which is the point. Route real findings back to the implementer; ignore anything in
    `review.mute`.
@@ -180,6 +228,12 @@ The simplifier is skipped when the plugin is not installed, with a line saying s
 
 Run **every** command in `verify.gate`. A change that builds in one configuration and not another is
 not done. Fix and re-run until clean.
+
+The gate build started in step 8 is the first run. If it is still going, say so in one line and wait
+for its notice. When it passed and the hash from step 8 still comes out the same, nothing changed
+since it started and the gate is passed. Otherwise, a review fix or a failure, run the gate again
+(through the lock script), which now rebuilds only what changed. A session resumed at this step has
+no notice to wait for: run the gate.
 
 ## 10. Format — last
 

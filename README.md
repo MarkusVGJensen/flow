@@ -124,7 +124,7 @@ pages, and one-click worktrees. The commands write the files Helm reads (`.flow-
 ## The parts of the plugin
 
 flow has no runtime of its own. It is a set of plain Claude Code building blocks: Markdown files for
-the commands, agents and skill, two small shell hooks, and one shell script. Where a first-party
+the commands, agents and skill, two small shell hooks, and two shell scripts. Where a first-party
 plugin already does a job well, flow calls it instead of reimplementing it.
 
 ```mermaid
@@ -133,7 +133,7 @@ flowchart TD
   CMD --> SK["Skill<br/>extent-router: how big is this job?"]
   CMD --> AG["flow's own agents<br/>researcher, tester, implementer,<br/>reviewer, mr-creator"]
   CMD --> FP["Agents from companion plugins<br/>code-architect, code-simplifier,<br/>review lenses, security-review"]
-  CMD --> SCR["Script<br/>wait-ci.sh watches CI"]
+  CMD --> SCR["Scripts<br/>wait-ci.sh watches CI,<br/>with-build-lock.sh takes turns"]
   HK["Hooks<br/>format gate, bash guard"] -. "check every<br/>shell command" .-> CMD
 ```
 
@@ -143,7 +143,8 @@ flowchart TD
 | Agents | `agents/*.md` | Specialised helpers the commands hand work to, each with only the tools its job needs |
 | Skill | `skills/extent-router/` | Decides how much machinery a task deserves before any is spent |
 | Hooks | `hooks/` | Checks that run before every shell command and can block it |
-| Script | `scripts/wait-ci.sh` | Waits on CI in the background so the model does not have to |
+| Scripts | `scripts/wait-ci.sh` | Waits on CI in the background so the model does not have to |
+| | `scripts/with-build-lock.sh` | Runs a build only while no other build uses the worktree's build tree |
 | Evals | `evals/` | Tests for the plugin's own behaviour |
 
 ## Commands
@@ -257,7 +258,7 @@ If you already know Claude Code's extension points, skip to [the table](#where-f
 | Model per call | `models` in the config picks the model for each kind of agent |
 | Hooks | Two `PreToolUse` hooks on Bash: the [format gate and the bash guard](#hooks-as-guard-rails) |
 | `LSP` tool | Researcher, tester, implementer and reviewer, when a language server is installed |
-| Background Bash | `wait-ci.sh`, while [watching CI](#waiting-without-the-model) |
+| Background Bash | `wait-ci.sh`, while [watching CI](#waiting-without-the-model); the [early builds](#building-early) |
 | Agent teams, workflows | The top two rungs of the [extent router](#sizing-the-job-the-extent-router), used only after you approve the cost |
 | Plugin evals | `evals/`; see [testing the plugin](#testing-the-plugin) |
 
@@ -461,6 +462,22 @@ result: green, a failure to triage, or a 25-minute mark to restart the waiter.
 A real failure gets a backup tag, a fix verified locally where possible, and a push with lease, at
 most `ci.attempts` times. A known flaky test is retried instead.
 
+## Building early
+
+A new worktree's build tree is empty, so its first full build is the long one. `start-issue` does
+not leave it for step 9. Once the worktree exists it starts every `verify.gate` command in the
+background, so the cold build runs during research, planning and your read of the plan. After the
+simplify pass of step 8 it starts the gate build again, while the review and security check, which
+only read, are under way. Step 9 then waits for that build and accepts it when nothing changed
+since it started; otherwise it runs the gate again, which only rebuilds what the review changed.
+
+Builds in one build tree must not overlap, so every build flow starts goes through
+`scripts/with-build-lock.sh`. It holds `<git dir>/build.lock` (a folder, since making one is
+atomic) for the length of the command, rewrites the `owner` file inside every 30 seconds, and
+waits while someone else holds it. A lock whose `owner` has not changed for two minutes belonged to
+something that died and is taken over. Helm configures and builds worktrees under the same lock, so
+its builds and flow's take turns.
+
 ## Progress you can resume from
 
 Each step of `start-issue` is written to `.flow-state.json` in the worktree as it starts (`active`),
@@ -510,7 +527,7 @@ The step numbers are what `.flow-state.json` and `/flow:status` report:
 | Build | 6 `tester` | Failing tests from the plan's test list (skipped if the list is empty) |
 | | 7 `implementer` | Code that makes them pass; cheap checks between edits |
 | | 8 `review` | Simplify, fresh-context review, security review when it applies |
-| | 9 `gate-build` | Every command in `verify.gate` must pass |
+| | 9 `gate-build` | Every command in `verify.gate` must pass; the build started in step 8 counts when nothing changed since |
 | | 10 `format` | The formatter, once, then `verify.extra` checks |
 | Ship | 11 `commits-gate` | Commits are shaped and pushed; **you approve them** |
 | | 12 `mr` | `mr-creator` squashes and opens the MR, then flow offers to save lessons |
@@ -556,7 +573,7 @@ config changes it.
 | Plan (4) | `code-architect`, your session | plugin's, yours | The briefs, not the files |
 | Tests and code (6-7) | `tester`, `implementer` | Opus | Edits and test runs; `verify.syntaxCheck` keeps the loop cheap |
 | Self-review (8) | `code-simplifier`, `reviewer`, `security-review` | plugin's, Opus, yours | One read of the diff each; security only on risky diffs |
-| Build and format (9-10) | your session | yours | Command output, once each |
+| Build and format (9-10) | your session | yours | Command output, once each; the early builds log to the git dir and cost nothing while they run |
 | Commits and MR (11-12) | your session, `mr-creator` | yours, Sonnet | Small |
 | CI | `wait-ci.sh` | none | Nothing while CI runs |
 | Team or workflow | many | per agent | Only after you approve the estimate |
@@ -666,6 +683,8 @@ undo it. `claude plugin validate .` checks the plugin's structure.
 - **Format once, last.** Formatting rewrites file timestamps, which on a large project forces a full
   rebuild.
 - **Keep the inner loop cheap.** Full builds belong in `verify.gate` and nowhere else.
+- **Build early, in the background.** The full builds start as soon as there is something to build,
+  so the gate only waits for what changed. They take turns through the build lock.
 - **Never wait with the model.** Anything that only waits (CI, a long build) runs as a script.
 - **Report what can happen.** A finding that guards against a case no caller produces today is
   dropped, in self-review and in reviews of others alike.
