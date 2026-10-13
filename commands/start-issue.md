@@ -142,26 +142,39 @@ chain: you choose the questions, weigh the briefs, and read the plan before the 
 Then task the `code-architect` agent (from `feature-dev`) with the issue **and the briefs**. It must
 produce, and must not write code, the **plan document**, in this order and under these headings. The
 architect has no Write tool, so it returns the document and you write it, unchanged, to
-`<worktree>/.flow-plan.md`:
+`<worktree>/.flow-plan.md`.
+
+The plan is read by a person deciding yes or no, so it is simple and easy to review: short sections,
+plain words, the overview first and the detail last. Someone who reads only sections 1–6 knows what
+will change and what they are being asked to decide.
 
 1. **Issue** — what is actually wrong or missing, in the reader's terms, with what the comments on the
-   issue narrowed it to. Not a restatement of the title.
-2. **Fix** — the shape of the solution in a paragraph, and the alternatives considered with a line each
-   on why not.
-3. **Design** — how the pieces fit, as UML in fenced `mermaid` blocks: a `classDiagram` of the classes
-   touched and added with the members that change, and a `sequenceDiagram` for each flow whose order
-   of calls matters. One diagram per concern; a diagram nobody needs is left out.
-4. **Classes and files** — a table, one row per class or file: path, modified or added, what changes
-   in it, and the signatures of anything new or changed.
-5. **Tests** — the **test list**, one line per behaviour, named after the behaviour, and under each the
-   file it goes in. The tester writes exactly these.
-6. **Views** — only when the change has a visible part. One mockup per view or state, drawn as a fenced
-   ASCII box or as an inline `<div>` with inline styles, showing the layout as it is meant to look;
-   then a **colour table** — role, hex value in backticks (`#1d2c37`), where it is used — using the
-   project's own tokens or palette where it has one, so the implementer and the reviewer judge the same
-   intent.
-7. **Done means** — the observable conditions under which the issue is closed, and the verification
-   that proves each.
+   issue narrowed it to. A few sentences, not a restatement of the title.
+2. **Fix** — the shape of the solution in a short paragraph: what will be different afterwards.
+3. **Architecture** — how the pieces fit, as UML in fenced `mermaid` blocks: a `classDiagram` of the
+   classes touched and added with the members that change, and a `sequenceDiagram` for each flow whose
+   order of calls matters. One diagram per concern; a diagram nobody needs is left out.
+4. **Folder structure** — a fenced tree of only the folders and files the change touches, each file
+   marked `(new)` or `(changed)` with a few words on its part in the fix.
+5. **UI visuals** — only when the change has a visible part; otherwise the heading with "No visible
+   change." One mockup per view or state, drawn as a fenced ASCII box or as an inline `<div>` with
+   inline styles, showing the layout as it is meant to look; then a **colour table** — role, hex value
+   in backticks (`#1d2c37`), where it is used — using the project's own tokens or palette where it has
+   one, so the implementer and the reviewer judge the same intent.
+6. **Open questions** — each decision the issue leaves open, numbered, with its options as a list and
+   the recommended one marked **(Recommended)** with a line on why. "None." when there are none. Do
+   not ask what the code or the issue already answers.
+7. **Detailed fix** — the detail the agents work from:
+   - **Alternatives** — the other approaches considered, a line each on why not.
+   - **Classes and files** — a table, one row per class or file: path, modified or added, what changes
+     in it, and the signatures of anything new or changed.
+   - **Tests** — the **test list**, one line per behaviour, named after the behaviour, and under each
+     the file it goes in. The tester writes exactly these.
+   - **Done means** — the observable conditions under which the issue is closed, and the verification
+     that proves each.
+
+Write the detailed fix assuming the recommended answers. If the user picks another, rewrite the
+affected sections before going on.
 
 Keep it out of the diff the first time it is written:
 `echo .flow-plan.md >> "$(git rev-parse --git-dir)/info/exclude"`. Helm shows the file under **Plan**,
@@ -174,7 +187,9 @@ the tester and the reviewer read it.
 Write the progress file with `status: waiting`. Say in a few lines what the plan does and that the
 document is in `.flow-plan.md` (Helm: the **Plan** button), then stop. Any clear yes is approval;
 Helm's **Approve plan** button types "The plan is approved. Continue.", possibly followed by a note to
-take into account. On approval, write step 6 `active` (or `skipped`, below) before anything else.
+take into account. Approval that does not answer an open question takes its recommended answer; an
+answer that differs means rewriting the plan to match first. On approval, write step 6 `active` (or
+`skipped`, below) before anything else.
 Answer design questions. Re-run the architect if the shape changes, and have it rewrite the file; do
 not patch a plan you no longer believe in.
 

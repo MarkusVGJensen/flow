@@ -277,9 +277,10 @@ sessions.
 
 flow stops for you exactly twice:
 
-1. **The plan.** Before any code is written you read `.flow-plan.md`: what is wrong, the fix and the
-   alternatives, UML diagrams, the files that change, the tests to write, mockups when there is a UI,
-   and what "done" means. Say yes, or say what to change.
+1. **The plan.** Before any code is written you read `.flow-plan.md`, short and overview first: the
+   issue, the fix, the architecture as UML, the folder structure, mockups when there is a UI, and
+   open questions with a recommended answer marked; then the detailed fix with the files, the tests
+   to write and what "done" means. Say yes (taking the recommended answers), or say what to change.
 2. **The commits.** Before the MR exists, the work is shaped into commits that read well one at a
    time, and pushed, so you can go through them.
 
