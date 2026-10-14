@@ -10,8 +10,9 @@ Review MR `$ARGUMENTS` and leave **draft** comments on it. Never submit the revi
 the drafts by hand and submits them.
 
 The first token of `$ARGUMENTS` is the MR id. A `--hold` token anywhere after it means **hold**: write
-the comments to the notes file and post nothing (steps 7 and 10 say what changes). Helm passes it, then
-shows the comments on the diff, lets the user edit and prune them, and posts the survivors itself.
+the comments to the notes file and post nothing (steps 7 and 10 say what changes). Hold is opt-in:
+Helm passes it only when its review prompt setting asks for it, then shows the comments on the
+diff, lets the user edit and prune them, and posts the survivors itself.
 Anything else after the id is the user's **note**, and the note outranks this document: it may name the parts to focus on, lenses to skip, whether to build, or that a
 worktree is not wanted. Read it before step 2 and let it shape steps 2, 4 and 5. With no note, follow
 the defaults below.
@@ -111,7 +112,10 @@ likely to be acted on without checking.
 
 ## 7. Write the notes file first
 
-Save survivors to `<worktree>/.flow-notes.json` **before** posting anything:
+Save survivors to the notes file **before** posting anything. Without `--hold` it is
+`<worktree>/.flow-notes.posted.json`, your own recovery copy. With `--hold` it is
+`<worktree>/.flow-notes.json`, the name Helm reads as comments waiting to be posted, so never
+use that name for comments you post yourself: Helm would offer to post them a second time.
 
 ```json
 {
@@ -172,7 +176,7 @@ glab api --method POST "projects/<enc>/merge_requests/<iid>/draft_notes" \
 - Comment on a **deleted** line: `old_line` instead of `new_line`, and no `new_line`.
 - A note with a `start_line` also gets a `line_range` (step 8a). The position's own `new_line` is
   still the range's **end** line.
-- Never `PUT` an existing draft note — it unanchors it. Delete and re-post from `.flow-notes.json`.
+- Never `PUT` an existing draft note — it unanchors it. Delete and re-post from `.flow-notes.posted.json`.
 
 ## 8a. Anchor on the whole range, or on its last line
 
@@ -227,6 +231,8 @@ author may have a reason you cannot see from the diff.
 
 Print what you posted, grouped by severity, with a one-line total. Remind the user the notes are
 drafts: they prune in GitLab and submit there. Never submit for them.
+If asked later to change or add comments, delete the affected drafts and re-post them from
+`.flow-notes.posted.json`, updating the file to match.
 
 With `--hold`, print the same grouping of what is in `.flow-notes.json` and say that nothing has been
 posted: the comments wait in Helm's **Review comments** page, where the user edits them and posts them

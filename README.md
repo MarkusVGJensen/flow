@@ -154,7 +154,7 @@ flowchart TD
 | `/flow:start-issue <id>` | Takes an issue from nothing to an open MR: worktree, plan, tests, implementation, review, build, format, commits, MR |
 | `/flow:status` | Shows where the current worktree stands: step, gate, branch, MR and pipeline |
 | `/flow:review-queue` | Lists the MRs waiting on your review; pick one to start reviewing it |
-| `/flow:review-mr <id> [--hold]` | Reviews someone else's MR and posts draft comments. With `--hold` the findings are saved to `.flow-notes.json` instead, each with a severity, for a front end to show and post |
+| `/flow:review-mr <id> [--hold]` | Reviews someone else's MR and posts draft comments, keeping a copy in `.flow-notes.posted.json`. With `--hold` the findings are saved to `.flow-notes.json` instead, each with a severity, for a front end to show and post |
 | `/flow:resolve-comments <id>` | Sorts the review feedback on your own MR, fixes what is real, and lands it as one commit |
 | `/flow:watch-pipeline [id]` | Waits on CI without spending tokens, fixes real failures and retries known flaky tests, within hard limits |
 | `/flow:vs <file>[:line]` | Optional, for Visual Studio users: opens a file at a line |
@@ -553,7 +553,7 @@ flowchart TD
   S --> L5["security-review<br/>if risky code changed"]
   L1 & L2 & L3 & L4 & L5 --> F["Filter hard: below the confidence floor,<br/>muted topics, duplicates, pure hardening,<br/>claims it cannot prove"]
   F --> D{"--hold?"}
-  D -- "no" --> P["Draft comments on the MR,<br/>plus one summary"]
+  D -- "no, the default" --> P["Draft comments on the MR,<br/>plus one summary"]
   D -- "yes" --> H[(".flow-notes.json,<br/>a severity each")]
   H --> FE["Helm:<br/>you prune, then post"]
 ```
