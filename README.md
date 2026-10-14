@@ -167,7 +167,7 @@ flowchart TD
 | `tester` | Opus | edit, LSP | Writes the planned tests and checks they fail for the right reason. Never touches production code |
 | `implementer` | Opus | edit, LSP | Makes the failing tests pass, inside the files the plan names. Never edits a test |
 | `reviewer` | Opus | read, LSP | Reviews the diff against `CLAUDE.md` without having seen it being written. Reports, never edits |
-| `mr-creator` | Sonnet | git only | Squashes the commits, pushes, and opens the MR from your template |
+| `mr-creator` | Sonnet | git only | Opens the MR from your template on the commits you approved, never squashing them |
 
 ## Companion plugins
 
@@ -511,7 +511,7 @@ flowchart TD
   G1 --> B1
   B5 --> G2[["You approve the commits"]]
   subgraph ship["Ship"]
-    M1["Squash and<br/>open the MR"] -.-> M2["Offer to save lessons<br/>to CLAUDE.md"]
+    M1["Open the MR on<br/>the reviewed commits"] -.-> M2["Offer to save lessons<br/>to CLAUDE.md"]
   end
   G2 --> M1
 ```
@@ -531,7 +531,7 @@ The step numbers are what `.flow-state.json` and `/flow:status` report:
 | | 9 `gate-build` | Every command in `verify.gate` must pass; the build started in step 8 counts when nothing changed since |
 | | 10 `format` | The formatter, once, then `verify.extra` checks |
 | Ship | 11 `commits-gate` | Commits are shaped and pushed; **you approve them** |
-| | 12 `mr` | `mr-creator` squashes and opens the MR, then flow offers to save lessons |
+| | 12 `mr` | `mr-creator` opens the MR on the approved commits, unsquashed, then flow offers to save lessons |
 
 **Lessons.** Once the MR is open, flow offers to fold what the issue taught (a convention the
 reviewer had to enforce, a build quirk) into `CLAUDE.md` through `claude-md-management`. Only on a

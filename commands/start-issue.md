@@ -269,12 +269,15 @@ The user reads the work one commit at a time, in Helm's **Review commits** page,
 to be worth reading that way before it stops here.
 
 1. **Shape the series.** The working history is scaffolding — tester red, implementer green, review
-   fixes, a formatting pass. Rewrite it (`git rebase -i` is not available; use `git reset --soft
+   fixes, a formatting pass. The series you make here is the one that lands: the MR keeps it as it
+   is, and its reviewers read it one commit at a time too. Rewrite it (`git rebase -i` is not available; use `git reset --soft
    origin/<defaultTarget>` and recommit, or `git commit --fixup` plus `git rebase --autosquash`) into
    commits that each do one thing and build on their own, in the order the change is best understood:
    tests with the code they test, a rename apart from a behaviour change, and never a later commit
-   that fixes an earlier one. Single-line messages, imperative, `{issue} - What this commit does`.
-   A small change is one commit; do not split for the sake of splitting.
+   that fixes an earlier one. Put independent fixes and refactors first, then the building blocks,
+   then the change that uses them, so each commit is read with what it needs already in place. Build
+   every commit on its own before pushing. Single-line messages, imperative, `{issue} - What this
+   commit does`. A small change is one commit; do not split for the sake of splitting.
 2. **Push the branch.** `git push -u origin <branch>`. If the branch is already on the remote from an
    earlier pass through this gate, tag a backup (`git tag backup/<branch>-<stamp>`) and push with
    `--force-with-lease`. Never a bare `--force`; the guard blocks it.
@@ -289,11 +292,11 @@ Nothing else is squashed or opened here.
 
 ## 12. MR
 
-On approval, write step 12 `active` and task `flow:mr-creator`. It squashes, pushes with
-`--force-with-lease` (the branch is already on the remote from step 11), opens the MR titled
-`{issue} - What was fixed` with the description from `mr.template`, sets assignee and reviewers from
-`mr.assignee` and `mr.reviewers`, and returns the link. It does not edit source. Then write step 12
-`done`.
+On approval, write step 12 `active` and task `flow:mr-creator`. It keeps the approved series exactly
+as it is (it never squashes or rewrites it), opens the MR titled `{issue} - What was fixed` with the
+description from `mr.template` and the commit list, leaves squash-on-merge off, sets assignee and
+reviewers from `mr.assignee` and `mr.reviewers`, and returns the link. It does not edit source or
+history. Then write step 12 `done`.
 
 **What this issue taught.** With `learn` set to `"ask"` (the default), finish with one line offering
 to fold what this issue taught into the project's `CLAUDE.md`: a convention the reviewer had to

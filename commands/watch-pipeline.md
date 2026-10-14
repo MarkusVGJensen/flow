@@ -67,8 +67,9 @@ glab ci trace <job-id>          # or: glab api "projects/<enc>/jobs/<id>/trace"
    matching `ci.blindJobPattern` cannot be verified locally; say so explicitly in every report.
 3. Format the files you changed with `verify.format`, then
    `touch "$(git rev-parse --git-dir)/flow-formatted"`, or the format gate blocks the amend.
-4. Amend into the commit that introduced the fault — normally the single squashed commit — so the
-   branch stays one readable change and not a trail of CI fixes.
+4. Fold the fix into the commit that introduced the fault (`git commit --fixup=<that commit>`, then
+   `git rebase --autosquash` with `GIT_SEQUENCE_EDITOR=:`), so the series stays readable commit by
+   commit and not a trail of CI fixes. Build the commits after it again before pushing.
 5. **Tag first:** `git tag backup/<branch>-$(date +%Y%m%d-%H%M%S)`
 6. Push: `git push --force-with-lease`
 

@@ -1,6 +1,6 @@
 ---
 name: mr-creator
-description: Squashes, pushes and opens the merge request once a diff is approved. Never edits source.
+description: Opens the merge request for an approved commit series, keeping the series as reviewed. Never edits source or history.
 tools: ["Bash", "Read", "Grep"]
 model: sonnet
 color: blue
@@ -17,28 +17,23 @@ and a reviewer.
 
 ## Commits
 
-Read the project's rules in `CLAUDE.md` first; they outrank this section on squashing and message
-format.
+**Never squash, reorder, reword or otherwise rewrite the branch.** The series on it was shaped at
+the commits gate for review one commit at a time, and the user approved exactly those commits; the
+MR's reviewers read it the same way. Open the MR on that series as it stands.
 
-By default **squash the branch into one commit**, whose message is the MR title: `{issue-number} -
-What was fixed`. The series on the branch was shaped for the commits gate, where the user read it
-one commit at a time; by here it has done its job, and a reviewer of the MR reads the change as a
-whole.
-
-If `CLAUDE.md` asks for a series instead, shape it for commit-by-commit review: each commit builds on
-its own and does one thing, and a later commit never fixes an earlier one in the same series. Say so
-in your report, and in the description if the template has a place for it.
-
-Single-line messages. Imperative. What changed and why, not how.
+Check before opening that the local branch and the remote branch point at the same commit, and that
+the series is what the user approved. If they differ, or the series needs changing, stop and report
+instead of fixing it yourself.
 
 Never add yourself as co-author, and never mention the tools used.
 
 ## Push and open
 
-The branch is already on the remote from the commits gate, so the squash goes up as a rewrite: tag a
-backup first (`git tag backup/<branch>-<stamp>`), then `git push --force-with-lease`. Never a bare
+The branch is already on the remote from the commits gate, so normally nothing is pushed. If the
+local branch is ahead only by commits the user approved after the last push, push with
+`git push --force-with-lease` after tagging a backup (`git tag backup/<branch>-<stamp>`). Never a bare
 `--force`; the guard blocks it, and if the lease fails the remote moved — stop and report. Open the
-MR against the configured target.
+MR against the configured target, and leave squash-on-merge off: the reviewed commits are what lands.
 
 Assignee and reviewers come from the flow config (`.claude/flow.json`, else
 `~/.claude/flow.local.json`):
@@ -94,6 +89,12 @@ Filling a template:
 - In a block of checkboxes, tick the box that is true of this MR, and only one unless the template
   says otherwise.
 - Keep a `Closes #{issue}` line where the template has one, so the forge closes the issue on merge.
+
+## The series in the description
+
+Say near the top of the description that the MR is meant to be read commit by commit, and list the
+commits in order with a line each on what it does, so a reviewer knows the route before opening the
+diff.
 
 ## Report
 
