@@ -7,7 +7,8 @@ allowed-tools: ["Bash", "Glob", "Grep", "Read", "Write", "Agent", "Skill"]
 # Review a merge request
 
 Review MR `$ARGUMENTS` and leave **draft** comments on it. Never submit the review — the user prunes
-the drafts by hand and submits them.
+the drafts by hand and submits them. Every comment is anchored to lines of the diff: never leave a
+general comment on the MR, not even a summary.
 
 The first token of `$ARGUMENTS` is the MR id. A `--hold` token anywhere after it means **hold**: write
 the comments to the notes file and post nothing (steps 7 and 10 say what changes). Hold is opt-in:
@@ -121,7 +122,7 @@ use that name for comments you post yourself: Helm would offer to post them a se
 {
   "mr": 123,
   "base_sha": "…", "start_sha": "…", "head_sha": "…",
-  "summary": "The cover letter of step 8b.",
+  "summary": "",
   "notes": [
     {"path":"src/A.cpp","start_line":38,"line":42,"side":"new","kind":"Issue","severity":4,"body":"**Issue:** …"}
   ]
@@ -129,6 +130,7 @@ use that name for comments you post yourself: Helm would offer to post them a se
 ```
 
 - The three SHAs are the `diff_refs` from step 1: the line numbers belong to that diff.
+- `summary` stays empty: Helm would post anything in it as a general comment.
 - `line` is always the **last** line the comment is about. `start_line` is its first line; leave it out
   when the comment really is about one line. See step 8a for why.
 - `side` is `"new"`, or `"old"` when the lines are removed ones and numbered on the old side.
@@ -148,8 +150,7 @@ use that name for comments you post yourself: Helm would offer to post them a se
 Draft notes cannot be edited safely — the recovery path is delete-all then re-post from this file, so
 it must exist first.
 
-**With `--hold`, stop here.** Write the cover letter of step 8b into `summary` instead of posting it,
-skip steps 8 to 8b entirely, and go to step 10. Do not post, delete or touch any draft note: the user
+**With `--hold`, stop here.** Skip steps 8 and 8a entirely, and go to step 10. Do not post, delete or touch any draft note: the user
 goes through the comments in Helm and Helm posts them.
 
 ## 8. Post as drafts
@@ -210,15 +211,6 @@ A range is a `line_range` inside `position`, next to the single-line fields:
 - After posting, `GET` the draft and check that `position.line_range` survived. If it didn't, delete
   that draft and re-post it on the end line alone.
 
-## 8b. One summary note
-
-After the anchored drafts, post **one** more draft note with no `position`: the cover letter. One
-paragraph, in this order: what was reviewed (files and roughly how many lines), which lenses ran and
-which were skipped and why, whether anything was built, how many Issues, Questions and Suggestions
-follow, and the user's note if there was one. A reader who opens the MR a week later should
-understand what this review did and did not look at. It is a draft like the others, so the user can
-delete it before submitting.
-
 ## 9. Comment form
 
 Open every comment with `**Question:**`, `**Issue:**` or `**Suggestion:**`. Then the problem in one or
@@ -229,7 +221,11 @@ author may have a reason you cannot see from the diff.
 
 ## 10. Report
 
-Print what you posted, grouped by severity, with a one-line total. Remind the user the notes are
+Start with one paragraph on what the review covered, in this order: what was reviewed (files and
+roughly how many lines), which lenses ran and which were skipped and why, whether anything was built,
+and the user's note if there was one. It goes in this report only, never on the MR.
+
+Then print what you posted, grouped by severity, with a one-line total. Remind the user the notes are
 drafts: they prune in GitLab and submit there. Never submit for them.
 If asked later to change or add comments, delete the affected drafts and re-post them from
 `.flow-notes.posted.json`, updating the file to match.

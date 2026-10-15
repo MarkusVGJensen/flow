@@ -154,7 +154,7 @@ flowchart TD
 | `/flow:start-issue <id>` | Takes an issue from nothing to an open MR: worktree, plan, tests, implementation, review, build, format, commits, MR |
 | `/flow:status` | Shows where the current worktree stands: step, gate, branch, MR and pipeline |
 | `/flow:review-queue` | Lists the MRs waiting on your review; pick one to start reviewing it |
-| `/flow:review-mr <id> [--hold]` | Reviews someone else's MR and posts draft comments, keeping a copy in `.flow-notes.posted.json`. With `--hold` the findings are saved to `.flow-notes.json` instead, each with a severity, for a front end to show and post |
+| `/flow:review-mr <id> [--hold]` | Reviews someone else's MR and posts line-anchored draft comments, never a general one, keeping a copy in `.flow-notes.posted.json`. With `--hold` the findings are saved to `.flow-notes.json` instead, each with a severity, for a front end to show and post |
 | `/flow:resolve-comments <id>` | Sorts the review feedback on your own MR, fixes what is real, and lands it as one commit |
 | `/flow:watch-pipeline [id]` | Waits on CI without spending tokens, fixes real failures and retries known flaky tests, within hard limits |
 | `/flow:vs <file>[:line]` | Optional, for Visual Studio users: opens a file at a line |
