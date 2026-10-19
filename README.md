@@ -132,8 +132,8 @@ flowchart TD
   U(["You"]) --> CMD["Slash commands<br/>/flow:start-issue, /flow:review-mr, …"]
   CMD --> SK["Skill<br/>extent-router: how big is this job?"]
   CMD --> AG["flow's own agents<br/>researcher, tester, implementer,<br/>reviewer, mr-creator"]
-  CMD --> FP["Agents from companion plugins<br/>code-architect, code-simplifier,<br/>review lenses, security-review"]
-  CMD --> SCR["Scripts<br/>wait-ci.sh watches CI,<br/>with-build-lock.sh takes turns"]
+  CMD --> FP["Agents from companion plugins<br/>code-simplifier,<br/>review lenses, security-review"]
+  CMD --> SCR["Scripts<br/>wait-ci.sh watches CI,<br/>with-build-lock.sh takes turns,<br/>post-review.mjs posts comments"]
   HK["Hooks<br/>format gate, bash guard"] -. "check every<br/>shell command" .-> CMD
 ```
 
@@ -145,6 +145,7 @@ flowchart TD
 | Hooks | `hooks/` | Checks that run before every shell command and can block it |
 | Scripts | `scripts/wait-ci.sh` | Waits on CI in the background so the model does not have to |
 | | `scripts/with-build-lock.sh` | Runs a build only while no other build uses the worktree's build tree |
+| | `scripts/post-review.mjs` | Posts a review's comments to GitLab as inline drafts, each on its file and lines |
 | Evals | `evals/` | Tests for the plugin's own behaviour |
 
 ## Commands
@@ -152,29 +153,25 @@ flowchart TD
 | Command | What it does |
 | --- | --- |
 | `/flow:start-issue <id>` | Takes an issue from nothing to an open MR: worktree, plan, tests, implementation, review, build, format, commits, MR |
-| `/flow:status` | Shows where the current worktree stands: step, gate, branch, MR and pipeline |
-| `/flow:review-queue` | Lists the MRs waiting on your review; pick one to start reviewing it |
-| `/flow:review-mr <id> [--hold]` | Reviews someone else's MR and posts line-anchored draft comments, never a general one, keeping a copy in `.flow-notes.posted.json`. With `--hold` the findings are saved to `.flow-notes.json` instead, each with a severity, for a front end to show and post |
-| `/flow:resolve-comments <id>` | Sorts the review feedback on your own MR, fixes what is real, and lands it as one commit |
+| `/flow:review-mr <id> [--hold]` | Reviews an MR and posts line-anchored draft comments, never a general one, keeping a copy in `.flow-notes.posted.json`. With `--hold` the findings are saved to `.flow-notes.json` instead, each with a severity, for a front end to show and post |
+| `/flow:resolve-comments <id>` | Judges the review feedback on your own MR, folds each real fix into the commit it belongs to, and drafts replies for the rest |
 | `/flow:watch-pipeline [id]` | Waits on CI without spending tokens, fixes real failures and retries known flaky tests, within hard limits |
-| `/flow:vs <file>[:line]` | Optional, for Visual Studio users: opens a file at a line |
-
 ## Agents
 
 | Agent | Default model | Tools | Job |
 | --- | --- | --- | --- |
 | `researcher` | Sonnet | read, LSP | Reads one area of the code and returns a short factual brief. Several run at once |
+| `architect` | Opus | read, LSP, writes the plan | Turns the issue and the briefs into `.flow-plan.md`. Never writes code |
 | `tester` | Opus | edit, LSP | Writes the planned tests and checks they fail for the right reason. Never touches production code |
 | `implementer` | Opus | edit, LSP | Makes the failing tests pass, inside the files the plan names. Never edits a test |
 | `reviewer` | Opus | read, LSP | Reviews the diff against `CLAUDE.md` without having seen it being written. Reports, never edits |
-| `mr-creator` | Sonnet | git only | Opens the MR from your template on the commits you approved, never squashing them |
+| `mr-creator` | Sonnet | git only | Opens the MR from your template on the commits you approved |
 
 ## Companion plugins
 
 flow leans on these first-party plugins from `claude-plugins-official`. Install each with
 `/plugin install <name>@claude-plugins-official` in a session:
 
-- **feature-dev**: its `code-architect` agent writes the plan.
 - **pr-review-toolkit**: the review "lenses" `/flow:review-mr` runs in parallel.
 - **code-simplifier**: the first self-review pass.
 - **claude-md-management**: folds lessons from an issue into `CLAUDE.md`.
@@ -217,6 +214,38 @@ imprecise:
 The result is cheaper research, smaller contexts, and plans and reviews built on the real call graph
 rather than on whatever a text search happened to find.
 
+### How the language server sees a worktree
+
+A language server is only as good as what it is told about the build. For C and C++ that is
+`compile_commands.json`, the list of every source file with the exact compiler flags it is built
+with: defines, include paths, language standard. CMake writes it into the build tree; clangd looks
+for it only at the checkout's root and in `build/`. Without it clangd guesses the flags, and the
+guesses show: headers "not found", `std::shared_ptr<…>` reported as `int`, no definitions found.
+
+So the idea has three parts:
+
+1. **Real flags in every checkout.** Helm copies the build tree's `compile_commands.json` to the root
+   of each worktree after every configure and build. A brand-new worktree borrows the Hub's copy,
+   with its paths rewritten, until its own configure has run, so a session can plan with real flags
+   from its first prompt.
+2. **An index per checkout.** With the flags in place, clangd indexes the whole tree in the
+   background and keeps the index in `.cache/clangd/index` beside `compile_commands.json`. A fresh
+   worktree's index takes a while to build, minutes on a large tree; until it is done, "who calls
+   this?" finds only the callers in files already indexed. An existing worktree loads its index from
+   disk in seconds.
+3. **One question, one call.** The agents ask the server for definitions, references, callers and
+   types, and use grep for text, config and comments.
+
+What follows for the agents:
+
+- **An empty or thin answer is not proof.** "No references found" in a worktree still indexing
+  means "not indexed yet", not "unused". Before acting on a claim that something has no callers,
+  for example deleting it, check with a grep.
+- **Signs of a server without flags:** a header reported missing that exists, types shown as `int`,
+  errors in standard-library headers. Say so once and fall back to grep for the rest of the task.
+- **Results can span checkouts.** One clangd serves a session, so if the session has opened files in
+  two worktrees, references from both come back. Keep the paths under your own worktree.
+
 ---
 
 # The Claude Code features it uses
@@ -253,7 +282,7 @@ If you already know Claude Code's extension points, skip to [the table](#where-f
 | --- | --- |
 | Slash commands | The seven [`/flow:*` commands](#commands) |
 | Skills | `extent-router` (invoked by `start-issue`, and picked up by Claude on its own), the built-in `security-review`, and `claude-md-management:revise-claude-md` |
-| Subagents | flow's five [agents](#agents), plus `code-architect`, `code-simplifier` and the `pr-review-toolkit` lenses |
+| Subagents | flow's six [agents](#agents), plus `code-simplifier` and the `pr-review-toolkit` lenses |
 | Parallel fan-out | Researchers during planning; review lenses in `review-mr` |
 | Model per call | `models` in the config picks the model for each kind of agent |
 | Hooks | Two `PreToolUse` hooks on Bash: the [format gate and the bash guard](#hooks-as-guard-rails) |
@@ -311,7 +340,7 @@ flowchart LR
    question per area.
 2. Several `researcher` agents on Sonnet read in parallel. Each answers with a page-long factual
    brief.
-3. The briefs go back to your session, which has `code-architect` draft the plan from the issue and
+3. The briefs go back to your session, which has `architect` draft the plan from the issue and
    the briefs, reads the draft, and owns what you are shown.
 
 What that buys:
@@ -438,7 +467,7 @@ change.
 ## Hooks as guard rails
 
 Some rules are too important to leave to the model remembering them, so they are `PreToolUse` hooks
-on Bash that run before every shell command:
+that run before every Bash and PowerShell command:
 
 - **Format gate.** In a flow worktree (one with a `.flow-state.json`), blocks `git commit` when a
   changed file was edited after the formatter last ran. Docs, data and binaries do not count. The
@@ -448,9 +477,18 @@ on Bash that run before every shell command:
   such as `git push origin +main`. `--force-with-lease` is allowed, and a commit message that only
   mentions a force push is not blocked. When `verify.formatGuard`
   names the project's tree-wide formatter, it also blocks running it over the whole tree unless the
-  command is acknowledged with `FLOW_TREEWIDE_OK=1`.
+  command is acknowledged with `FLOW_TREEWIDE_OK=1`. Only a run counts: a `grep` or `ls` that names
+  the script, or its `--help`, passes.
 
-Both hooks check the directory a command actually acts in, not just the session's: a
+One more hook runs when a session starts:
+
+- **Compile commands.** In a CMake checkout (a `CMakeLists.txt` at the root), checks that
+  `compile_commands.json` is at the root and describes this checkout. When it is missing, empty, or
+  written for another checkout, it tells Claude so, and where the build tree has one, so the session
+  does not trust a [language server](#how-the-language-server-sees-a-worktree) running on guessed
+  flags. It only informs; it never blocks or copies anything.
+
+Both command hooks check the directory a command actually acts in, not just the session's: a
 `cd <worktree> && git commit` or a `git -C <worktree> commit` is checked against that worktree.
 
 ## Waiting without the model
@@ -483,8 +521,8 @@ its builds and flow's take turns.
 
 Each step of `start-issue` is written to `.flow-state.json` in the worktree as it starts (`active`),
 finishes (`done`), is skipped (`skipped`) or stops at a gate (`waiting`). Run `/flow:start-issue` again
-after a crash, a context compaction or a night's sleep, and it continues from there. `/flow:status`
-and Helm read the same file.
+after a crash, a context compaction or a night's sleep, and it continues from there. Helm reads
+the same file.
 
 ---
 
@@ -516,7 +554,7 @@ flowchart TD
   G2 --> M1
 ```
 
-The step numbers are what `.flow-state.json` and `/flow:status` report:
+The step numbers are what `.flow-state.json` records:
 
 | Phase | Step | What happens |
 | --- | --- | --- |
@@ -531,7 +569,7 @@ The step numbers are what `.flow-state.json` and `/flow:status` report:
 | | 9 `gate-build` | Every command in `verify.gate` must pass; the build started in step 8 counts when nothing changed since |
 | | 10 `format` | The formatter, once, then `verify.extra` checks |
 | Ship | 11 `commits-gate` | Commits are shaped and pushed; **you approve them** |
-| | 12 `mr` | `mr-creator` opens the MR on the approved commits, unsquashed, then flow offers to save lessons |
+| | 12 `mr` | `mr-creator` opens the MR on the approved commits, then flow offers to save lessons |
 
 **Lessons.** Once the MR is open, flow offers to fold what the issue taught (a convention the
 reviewer had to enforce, a build quirk) into `CLAUDE.md` through `claude-md-management`. Only on a
@@ -553,7 +591,7 @@ flowchart TD
   S --> L5["security-review<br/>if risky code changed"]
   L1 & L2 & L3 & L4 & L5 --> F["Filter hard: below the confidence floor,<br/>muted topics, duplicates, pure hardening,<br/>claims it cannot prove"]
   F --> D{"--hold?"}
-  D -- "no, the default" --> P["Draft comments on the MR,<br/>plus one summary"]
+  D -- "no, the default" --> P["post-review.mjs: inline draft comments,<br/>each on its file and lines"]
   D -- "yes" --> H[(".flow-notes.json,<br/>a severity each")]
   H --> FE["Helm:<br/>you prune, then post"]
 ```
@@ -561,6 +599,12 @@ flowchart TD
 - **Only as wide as needed.** A one-file fix gets `code-reviewer` alone. Your note outranks the
   defaults: "focus on the threading" runs only the lenses that bear on threading.
 - **Drafts only.** Nothing is submitted. The comments stay yours to prune until you submit the review.
+- **Inline only.** Every comment sits on its file and lines: a comment about several lines as a
+  multi-line range, so GitLab's Overview shows exactly those lines. There is never a summary or any
+  other general comment. `scripts/post-review.mjs` does the posting, so the GitLab positions are
+  computed the same way every time instead of by hand: it reads the diff of the exact MR version
+  that was reviewed, checks that each range survived, and puts a range GitLab refuses on its last
+  line. `--dry-run` shows the anchors without posting.
 
 ## What it costs
 
@@ -571,7 +615,7 @@ config changes it.
 | --- | --- | --- | --- |
 | Set up (1-3) | your session | yours | The issue and its comments |
 | Research (4) | `researcher` ×0 to N | Sonnet | Reading: most of the planning tokens, on the cheap model |
-| Plan (4) | `code-architect`, your session | plugin's, yours | The briefs, not the files |
+| Plan (4) | `architect`, your session | Opus, yours | The briefs, not the files |
 | Tests and code (6-7) | `tester`, `implementer` | Opus | Edits and test runs; `verify.syntaxCheck` keeps the loop cheap |
 | Self-review (8) | `code-simplifier`, `reviewer`, `security-review` | plugin's, Opus, yours | One read of the diff each; security only on risky diffs |
 | Build and format (9-10) | your session | yours | Command output, once each; the early builds log to the git dir and cost nothing while they run |
@@ -634,9 +678,9 @@ the agent, and an HTML comment holds instructions for the agent that are left ou
   your checkout. It finds the worktree's `.flow-state.json` and resumes: finished and skipped steps
   are not redone, an interrupted step is finished, and a waiting gate shows you the plan or the
   commits again.
-- **Where am I?** `/flow:status`.
+- **Where am I?** The tab's step timeline in Helm, or `.flow-state.json` in the worktree.
 - **The format gate blocked a commit.** Files changed after the formatter ran. Run `verify.format`
-  again, then `touch "$(git rev-parse --git-dir)/flow-formatted"`.
+  again, with `&& touch "$(git rev-parse --git-dir)/flow-formatted"` in the same command.
 - **A CI fix went wrong.** Every rewrite is preceded by a `backup/<branch>-<stamp>` tag. Reset to it
   and push with `--force-with-lease`.
 - **The plan turns out wrong after the gate.** Say so. The architect re-plans and rewrites

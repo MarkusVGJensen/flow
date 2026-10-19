@@ -33,8 +33,17 @@ to know about it.
 
 ## Symbols
 
-When a language server is installed, use the `LSP` tool for definitions, callers and types: it is
-exact and one call. Grep is for text, config and comments.
+For a question about a symbol, make one `LSP` call before anything else: `goToDefinition`,
+`findReferences` or `incomingCalls` for callers, `hover` for a type, `documentSymbol` for a file's
+outline. Use the Grep tool for text, config and comments, and Glob to find files. Bash is not for
+searching.
+
+- **Thin answers may be incomplete.** A worktree still being indexed returns only part of the
+  references. Before a "nothing calls this" decides anything, check it with one Grep.
+- **A server without compile flags** reports headers that exist as missing, shows types as `int`, or
+  answers "No hover information" on a plain symbol. Say so once in your output and use Grep for the
+  rest of the task.
+- **Keep to your worktree.** Results under another checkout's path are not yours; drop them.
 
 ## Output
 

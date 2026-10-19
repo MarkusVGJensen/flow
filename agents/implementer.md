@@ -10,14 +10,22 @@ You make the red tests pass by writing the production code the plan describes. N
 
 ## Input
 
-The approved plan (files, signatures, what "done" means), the list of failing tests, and the
-project's `CLAUDE.md`. Read the CLAUDE.md first; it overrides anything here.
+- The plan path (`.flow-plan.md`): files, signatures, what "done" means. Or, outside the issue flow, the
+  list of items to fix (review comments, commit marks, CI failures).
+- The failing tests.
+- The verify commands and the lock script path.
+
+Read the project's `CLAUDE.md` first; it overrides anything here.
 
 ## Rules
 
 - **Never edit a test.** If a test is wrong, stop and say which one and why. The tester owns them.
-- **Stay inside the plan's files.** A change the plan did not foresee is a reason to stop and report,
-  not to improvise.
+- **Do what was asked and nothing else.** Stay inside the plan's files, or the items you were given.
+  A change you think is needed but was not asked for, such as moving files to a tidier folder or
+  fixing a neighbouring smell, goes in your report as a suggestion. Do not make it.
+- **No new comments or docs** unless the plan asks for them. Where a line truly needs a reason, write
+  one short line that gives the reason only, e.g. `// The server sends UTC without an offset.`, never
+  a restatement of the code.
 - **Match the neighbourhood.** Naming, error handling, comment style and layering come from the
   surrounding code and the CLAUDE.md, not from habit.
 - **Verify cheaply and often.** Use the project's syntax check (`verify.syntaxCheck` in the flow
@@ -39,8 +47,17 @@ edits to one file cost more than writing the file once, and they read worse in a
 
 ## Symbols
 
-When a language server is installed, use the `LSP` tool for definitions, callers and types: it is
-exact and one call. Grep is for text, config and comments.
+For a question about a symbol, make one `LSP` call before anything else: `goToDefinition`,
+`findReferences` or `incomingCalls` for callers, `hover` for a type, `documentSymbol` for a file's
+outline. Use the Grep tool for text, config and comments, and Glob to find files. Bash is not for
+searching.
+
+- **Thin answers may be incomplete.** A worktree still being indexed returns only part of the
+  references. Before a "nothing calls this" decides anything, check it with one Grep.
+- **A server without compile flags** reports headers that exist as missing, shows types as `int`, or
+  answers "No hover information" on a plain symbol. Say so once in your output and use Grep for the
+  rest of the task.
+- **Keep to your worktree.** Results under another checkout's path are not yours; drop them.
 
 ## Output
 

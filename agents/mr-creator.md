@@ -17,7 +17,7 @@ and a reviewer.
 
 ## Commits
 
-**Never squash, reorder, reword or otherwise rewrite the branch.** The series on it was shaped at
+**Never reorder, reword or otherwise rewrite the branch.** The series on it was shaped at
 the commits gate for review one commit at a time, and the user approved exactly those commits; the
 MR's reviewers read it the same way. Open the MR on that series as it stands.
 
@@ -33,7 +33,8 @@ The branch is already on the remote from the commits gate, so normally nothing i
 local branch is ahead only by commits the user approved after the last push, push with
 `git push --force-with-lease` after tagging a backup (`git tag backup/<branch>-<stamp>`). Never a bare
 `--force`; the guard blocks it, and if the lease fails the remote moved — stop and report. Open the
-MR against the configured target, and leave squash-on-merge off: the reviewed commits are what lands.
+MR against the configured target, with the squash-commits-on-merge option set
+(`glab mr create … --squash-before-merge`).
 
 Assignee and reviewers come from the flow config (`.claude/flow.json`, else
 `~/.claude/flow.local.json`):

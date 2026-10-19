@@ -1,56 +1,76 @@
 ---
 name: extent-router
-description: Choose how much machinery a task deserves — one session, subagents, an agent team, or a dynamic workflow. Use when sizing an issue or when a task feels like it might need parallel agents.
+description: Choose how much machinery a task deserves — one session, subagents, an agent team, or a dynamic workflow. Use at the start of any task that reads or changes more than a few files, repeats one check over many places ("all the views", "every store"), hunts a regression, fixes several review comments, or might need parallel agents; and when sizing an issue.
 ---
 
 # Choosing the extent
 
-Pick the smallest arrangement that can do the job. Each step up multiplies token cost, and the cost is
-paid whether or not it helped.
+Choose by what the work is, not by habit. Defaulting to one session is the most common mistake: it
+fills your context with files you read once, and long tasks then run out of context and get compacted
+mid-work.
 
-## The ladder
+## The four extents
 
-**One session** — the default. A bug fix, a small feature, anything where the whole task fits in one
-head. Most work is here. Do not talk yourself out of it.
+| Extent | Use when | Costs |
+| --- | --- | --- |
+| **One session** | You already know the one to three files involved, and the change is small. | 1× |
+| **Subagents** | Reading you will not need again, independent pieces of one job, or a fresh pair of eyes. Only conclusions come back to you. | ~1–2× |
+| **Agent team** | Long strands that run in parallel and must agree with each other as they go. | ~1× per teammate |
+| **Workflow** | More agents than one conversation can steer, or orchestration worth rerunning. | dozens of agents |
 
-**Subagents** — when the work has phases with different jobs (plan, then test, then implement), or
-when a search would flood your context with files you will not keep. The phase boundary is the point:
-what the subagent read never enters your context, only its conclusion. This is the workhorse of the
-issue flow.
+## Examples
 
-**An agent team** — when several long-running strands genuinely proceed in parallel and need to see
-each other's results. Real cost: every teammate has its own context window, so a four-teammate team
-costs roughly four sessions. Worth it for research, review, and new feature work; wasteful for
-anything routine.
+**One session**
+- "Rename this parameter in `RouteStore.cpp`." You know the file; just do it.
+- "Why does this test fail?" with the trace pointing at one function.
 
-**A dynamic workflow** — when the task needs more agents than one conversation can coordinate, or when
-the orchestration itself is worth keeping and rerunning. A codebase-wide sweep, a several-hundred-file
-migration, a hard plan drafted from independent angles. Dozens to hundreds of agents.
+**Subagents**, the usual answer for anything bigger:
+- "Seventeen views are still white in dark mode." One `flow:researcher` per group of views, in
+  parallel, each returning which colours are hard-coded and where. You fix with the briefs in hand.
+- "The font regressed somewhere since 2.3." Researchers in parallel: one reads the font setup, one
+  the theme files, one `git log -p` over the range for font changes. Do not grep the tree yourself
+  for an hour.
+- "Fix these six review comments." When they touch different files, one implementer per group; when
+  they touch the same files, one implementer for all of them, in order.
+- "Review this 20-file MR." Review lenses in parallel (`/flow:review-mr` does this).
+- The issue chain: researchers, then architect, tester, implementer, reviewer.
 
-## Deciding
+**Agent team**
+- One feature built on Windows (Qt) and iOS (Swift) over a shared C++ model, where both sides must
+  agree on the model's interface as it changes. One teammate per platform, plus one for the model.
+- A deep investigation where three hypotheses are chased at once, and each finding changes what the
+  others look at.
 
-Ask what the work actually is:
+**Workflow**
+- Change a call pattern in 300 files: one agent per batch of files, then a verifier per batch.
+- A hard design question drafted three ways by independent agents, then compared by a judge.
+- A sweep of every store class for the same defect, with each hit verified.
 
-- One coherent change, one file or a few → **one session**
-- Distinct phases, or a search whose output you do not want to keep → **subagents**
-- Independent strands that must compare notes, running long → **team**
-- A mechanical change across a large surface, or several independent attempts at one hard question →
-  **workflow**
+## Signals
 
-Signals for the top of the ladder: "everywhere", "all of", "every file", "rewrite X to Y", a count in
-the hundreds, or a question worth answering three ways and comparing.
+- Toward **subagents**: more than three files to read; "find", "check every", "all the", "why does …
+  regress"; a list of items that do not depend on each other; you notice yourself re-reading files.
+- Toward a **team**: strands that run for an hour and depend on each other's results.
+- Toward a **workflow**: "everywhere", "every file", a count in the hundreds, "answer this several ways
+  and compare".
+
+## Rules for parallel agents
+
+- **Edits in parallel only on disjoint files.** Two agents editing in one worktree must never touch
+  the same file. Builds go through the build lock (`with-build-lock.sh`).
+- **One message, many Agent calls.** Agents in the same message run at the same time.
+- **Each agent gets one question and the paths it needs.** It sees nothing of your conversation.
+- **Ask for short answers:** a brief under 400 words, findings as `path:line`.
 
 ## The gate
 
-**Subagents and below: just proceed.** Do not narrate the choice.
+- **One session or subagents:** proceed without comment.
+- **Team or workflow:** stop. Say what you would run, how many agents, the rough token cost, and what
+  the cheaper extent would miss. Wait for a yes.
 
-**A team or a workflow: stop.** Say what you would run, how many agents, roughly what it costs, and
-what the cheaper option would miss. Then wait. Nobody wants to discover forty agents after the fact.
+## Correcting course
 
-## Getting it wrong
-
-Too small shows up as a session that thrashes — re-reading files, losing the thread. Step up.
-
-Too big is worse, because it looks like progress. Five agents on a one-file change produce five
-opinions and one commit. If teammates are waiting on each other more than working, you chose wrong;
-collapse it.
+- Too small: you re-read files, lose track, or your context is half spent before the change starts.
+  Hand the remaining reading to subagents.
+- Too big: agents wait on each other more than they work, or five agents produce one small commit.
+  Collapse to fewer.

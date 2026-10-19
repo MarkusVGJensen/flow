@@ -1,7 +1,7 @@
 ---
 description: "Watch a pipeline until green, fixing real failures and retrying flaky ones"
 argument-hint: "[mr-id]"
-allowed-tools: ["Bash", "Glob", "Grep", "Read", "Edit", "Agent"]
+allowed-tools: ["Bash", "PowerShell", "Glob", "Grep", "Read", "Edit", "Agent"]
 ---
 
 # Watch the pipeline
@@ -15,13 +15,7 @@ without asking each time, so the limits below are absolute.
 Stop immediately, with a one-line reason, if any of these hold:
 
 1. **The branch is not the user's own.** Never a branch they are reviewing. Never the default branch.
-2. **The MR has open discussions or unresolved notes.**
-   ```
-   glab api "projects/<enc>/merge_requests/<iid>/discussions"
-   ```
-   A history rewrite unanchors line-anchored comments. Someone else's review is not yours to destroy.
-   Report the failure and let the user decide.
-3. **Attempts are spent** — `ci.attempts` for a normal job, `ci.attemptsBlind` for one matching
+2. **Attempts are spent** — `ci.attempts` for a normal job, `ci.attemptsBlind` for one matching
    `ci.blindJobPattern`.
 
 ## Wait without spending tokens
@@ -33,8 +27,16 @@ own and only returns when CI has finished:
 sh "${CLAUDE_PLUGIN_ROOT}/scripts/wait-ci.sh" <forge> <project> <mr> <ci.pollMinutes × 60> 25
 ```
 
+The arguments come straight from the config: `forge` is `glab` or `gh` exactly as written there,
+`project` is the config's `project`. Example with `pollMinutes: 10`:
+
+```
+sh "${CLAUDE_PLUGIN_ROOT}/scripts/wait-ci.sh" glab tmsdk/safepilot 4432 600 25
+```
+
 Start it with the Bash tool's `run_in_background: true` and end your turn with one line saying what you are
-waiting for. It prints `status <s>` on each change and exits:
+waiting for. **Several MRs** (a stack, or the user names more than one): one waiter per MR, each its
+own background call, never several joined with `&` in one command. Handle each as it finishes. It prints `status <s>` on each change and exits:
 
 - `done success` — green. Report and stop.
 - `done failed` (or `canceled`) — triage, below.
@@ -65,11 +67,18 @@ glab ci trace <job-id>          # or: glab api "projects/<enc>/jobs/<id>/trace"
 1. Read the trace and find the actual error — not the first red line, the cause.
 2. Fix it in the worktree. Verify locally with `verify.targeted` **if the platform allows**. A job
    matching `ci.blindJobPattern` cannot be verified locally; say so explicitly in every report.
-3. Format the files you changed with `verify.format`, then
-   `touch "$(git rev-parse --git-dir)/flow-formatted"`, or the format gate blocks the amend.
-4. Fold the fix into the commit that introduced the fault (`git commit --fixup=<that commit>`, then
-   `git rebase --autosquash` with `GIT_SEQUENCE_EDITOR=:`), so the series stays readable commit by
-   commit and not a trail of CI fixes. Build the commits after it again before pushing.
+   Fix only the failure. Nothing the trace does not point at, even if it looks like an improvement.
+3. Format the files you changed, with the stamp in the same command:
+   `<formatter> --file <path> && touch "$(git rev-parse --git-dir)/flow-formatted"`. Never touch the
+   stamp on its own.
+4. **Without open discussions on the MR, or when the user asked to fold:** fold the fix into the
+   commit that introduced the fault (`git commit --fixup=<that commit>`, then
+   `GIT_SEQUENCE_EDITOR=: git rebase -i --autosquash origin/<target>`), so the series reads commit by
+   commit, not as a trail of CI fixes. Build the tip again before pushing.
+
+   **With open discussions** (`glab api "projects/<enc>/merge_requests/<iid>/discussions"`) and no
+   request to fold: a rewrite moves their anchors, so add the fix as a new commit
+   (`{issue} - Fix <job>`), push it with a plain `git push`, and skip steps 5 and 6.
 5. **Tag first:** `git tag backup/<branch>-$(date +%Y%m%d-%H%M%S)`
 6. Push: `git push --force-with-lease`
 

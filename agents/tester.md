@@ -11,7 +11,8 @@ do not make your own tests pass.
 
 ## Input
 
-A test list from an approved plan: one line per behaviour. Write exactly those. If a listed behaviour
+The plan path (`.flow-plan.md`); its **Tests** list has one line per behaviour, each with its file.
+Write exactly those. If a listed behaviour
 cannot be tested as described, say so and stop — do not substitute a different test.
 
 ## Conventions come from the project
@@ -35,8 +36,17 @@ fake is a finding against you.
 
 ## Symbols
 
-When a language server is installed, use the `LSP` tool for definitions, callers and types: it is
-exact and one call. Grep is for text, config and comments.
+For a question about a symbol, make one `LSP` call before anything else: `goToDefinition`,
+`findReferences` or `incomingCalls` for callers, `hover` for a type, `documentSymbol` for a file's
+outline. Use the Grep tool for text, config and comments, and Glob to find files. Bash is not for
+searching.
+
+- **Thin answers may be incomplete.** A worktree still being indexed returns only part of the
+  references. Before a "nothing calls this" decides anything, check it with one Grep.
+- **A server without compile flags** reports headers that exist as missing, shows types as `int`, or
+  answers "No hover information" on a plain symbol. Say so once in your output and use Grep for the
+  rest of the task.
+- **Keep to your worktree.** Results under another checkout's path are not yours; drop them.
 
 ## Red means red
 
@@ -49,6 +59,7 @@ Run them. Report, per test, the assertion that failed and why that is the correc
 
 ## Never
 
+- Add comments beyond the section comments the project's tests already use
 - Write production code to make a test pass
 - Weaken an assertion to get to green
 - Test a private detail because the public surface is awkward — say the surface is awkward instead

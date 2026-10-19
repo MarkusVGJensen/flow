@@ -3,7 +3,8 @@
 # A hook runs in the session's directory, but one Bash call can move: `cd <worktree> && git commit`
 # or `git -C <worktree> commit`. Checking the session's directory then checks the wrong repository.
 #
-#   hook_command <payload>   prints the command string, JSON escapes undone
+#   hook_command <payload>   prints the command string, JSON escapes undone: a multi-line command
+#                            comes out as several lines, so a pattern anchored with ^ sees each
 #   hook_cwd <payload>       prints the payload's cwd, or the hook's own directory
 #   command_dir <payload> [sub]
 #                            prints the directory the call acts in: hook_cwd, moved by every `cd`
@@ -11,10 +12,11 @@
 #                            then by that call's `git -C`. Quoted paths and a leading ~ are handled.
 #                            Fails when a cd target does not exist.
 
-json_string() {   # json_string <payload> <key>
+json_string() {   # json_string <payload> <key>: the value with its escapes undone, \n as real lines
   printf '%s' "$1" \
     | sed -nE 's/.*"'"$2"'"[[:space:]]*:[[:space:]]*"(([^"\]|\\.)*)".*/\1/p' \
-    | sed -e 's/\\"/"/g' -e 's/\\\\/\\/g'
+    | awk '{ gsub(/\\\\/, "\001"); gsub(/\\n/, "\n"); gsub(/\\r/, ""); gsub(/\\t/, " ");
+             gsub(/\\"/, "\""); gsub(/\001/, "\\"); print }'
 }
 
 hook_command() { json_string "$1" command; }
@@ -43,7 +45,9 @@ command_dir() {   # command_dir <payload> [git subcommand]
   # With a subcommand, only what runs before that git call moves it, plus its own -C.
   pre=$cmd call=""
   if [ -n "${2:-}" ]; then
-    pre=$(printf '%s' "$cmd" | sed -E "s/$(git_call "$2").*//")
+    # Every line before the call's, and its own line up to the call.
+    pre=$(printf '%s\n' "$cmd" | awk -v re="$(git_call "$2")" \
+      '{ if (match($0, re)) { print substr($0, 1, RSTART - 1); exit } print }')
     call=$(printf '%s' "$cmd" | grep -oE "$(git_call "$2")" | head -n 1)
   fi
   # Every cd, in order, each relative to where the one before left off.

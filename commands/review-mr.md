@@ -1,22 +1,25 @@
 ---
-description: "Review someone else's merge request and post line-anchored draft comments"
+description: "Review a merge request and post line-anchored draft comments"
 argument-hint: "<mr-id> [--hold] [note]"
-allowed-tools: ["Bash", "Glob", "Grep", "Read", "Write", "Agent", "Skill"]
+allowed-tools: ["Bash", "PowerShell", "Glob", "Grep", "Read", "Write", "Agent", "Skill", "LSP"]
 ---
 
 # Review a merge request
 
-Review MR `$ARGUMENTS` and leave **draft** comments on it. Never submit the review — the user prunes
-the drafts by hand and submits them. Every comment is anchored to lines of the diff: never leave a
-general comment on the MR, not even a summary.
+Review MR `$ARGUMENTS` and add your comments to it as **inline draft comments** in GitLab: each on its
+file and its line, or on its range of lines when it is about several. Never anything else:
 
-The first token of `$ARGUMENTS` is the MR id. A `--hold` token anywhere after it means **hold**: write
-the comments to the notes file and post nothing (steps 7 and 10 say what changes). Hold is opt-in:
-Helm passes it only when its review prompt setting asks for it, then shows the comments on the
-diff, lets the user edit and prune them, and posts the survivors itself.
-Anything else after the id is the user's **note**, and the note outranks this document: it may name the parts to focus on, lenses to skip, whether to build, or that a
-worktree is not wanted. Read it before step 2 and let it shape steps 2, 4 and 5. With no note, follow
-the defaults below.
+- No summary comment and no general comment on the MR, ever.
+- Never submit the review. The user prunes the drafts and submits them.
+
+Arguments:
+
+- The first token is the MR id.
+- `--hold`: write the comments to the notes file as they come and post nothing. Helm shows them on
+  the diff as they land; the user edits them, adds their own, and submits the review from Helm. Helm
+  always starts reviews this way.
+- Anything else is the user's **note**, and it outranks this file. Example: "focus on the threading,
+  no build" narrows steps 4 and 5. "no worktree" skips step 2. Read it before step 2.
 
 ## 1. Config and metadata
 
@@ -30,6 +33,13 @@ Keep `source_branch`, `target_branch`, and all three of `diff_refs.base_sha`, `.
 `.start_sha` — a line-anchored note is rejected without them.
 
 If `draft` is true, say so in the report and carry on; the author knows the anchors may move.
+
+Read the issue the MR closes (the `Closes #` line, or the issue number in its title or branch) and
+the issues it links. They say what the MR is for, and what later issues will build on it: code that
+looks unused may be groundwork for one of them.
+
+**The user's own MR** (`author.username` is the user's): review it the same way. At the end, offer
+`/flow:resolve-comments <iid>` to fix the drafts.
 
 ## 2. Claim a worktree — unless you already have one, or the note says not to
 
@@ -61,13 +71,22 @@ only when you need to confirm a specific claim, and say in the report that you d
 
 ## 5. Fan out — as wide as the diff deserves, no wider
 
-Size first. A one-file fix gets `code-reviewer` alone. The table below is the ceiling for a large
-diff, not the default, and the note wins over the table: "focus on the threading" means the lenses that
-bear on threading and nothing else.
+The lenses read the diff; you do not read it all first. You read what they report and check each
+finding against the code.
 
-Launch the chosen `pr-review-toolkit` agents **in parallel**, one Agent call per lens, each given the
-changed file list and told to review only those files, and with `models.lenses` from the config as
-the model when it is set:
+- **One file, a few lines:** review it yourself.
+- **Anything larger:** at least the `code-reviewer` agent, plus each lens from the table whose
+  condition holds. Examples: 3 files of UI code with new types → `code-reviewer` and
+  `type-design-analyzer`. 20 files with new error paths and tests → `code-reviewer`,
+  `silent-failure-hunter` and `pr-test-analyzer`.
+- **The note narrows the lenses:** "focus on the threading" means `code-reviewer` told to look at
+  threading only.
+
+Launch the chosen `pr-review-toolkit` agents **in parallel**, all in one message, one Agent call per
+lens. Give each the changed file list, the base and head SHAs, the issue's purpose in a line, and the
+instruction to review only those files. Pass `models.lenses` as the model when it is set. Use only the
+lenses below; a focus the table lacks (simplicity, naming) goes to `code-reviewer` as an extra
+instruction. Never use an agent that can edit files, such as `code-simplifier`, as a lens.
 
 | Lens | When |
 | --- | --- |
@@ -111,33 +130,46 @@ Treat this as the highest-cost mistake this command can make. A confident, well-
 remove something load-bearing reads as the most valuable comment in the review, and it is the one most
 likely to be acted on without checking.
 
-## 7. Write the notes file first
+## 7. Write the notes file
 
-Save survivors to the notes file **before** posting anything. Without `--hold` it is
-`<worktree>/.flow-notes.posted.json`, your own recovery copy. With `--hold` it is
-`<worktree>/.flow-notes.json`, the name Helm reads as comments waiting to be posted, so never
-use that name for comments you post yourself: Helm would offer to post them a second time.
+Every comment sits on the lines it is about: a file, and either one line or a range of lines. There
+is no summary comment and no general comment on the MR, in any mode. The overview of the review goes
+in your report to the user (step 10), never to GitLab.
+
+Write the surviving findings to the notes file before anything is posted. Keep both notes files out
+of `git status`: list `.flow-notes.json` and `.flow-notes.posted.json` in
+`"$(git rev-parse --git-path info/exclude)"`, appending only the lines it lacks.
+
+- Without `--hold`: `<worktree>/.flow-notes.posted.json`, the record of what you posted.
+- With `--hold`: `<worktree>/.flow-notes.json`, which Helm shows and posts. Never use this name for
+  comments you post yourself, or Helm offers to post them a second time.
 
 ```json
 {
   "mr": 123,
   "base_sha": "…", "start_sha": "…", "head_sha": "…",
-  "summary": "",
   "notes": [
-    {"path":"src/A.cpp","start_line":38,"line":42,"side":"new","kind":"Issue","severity":4,"body":"**Issue:** …"}
+    {"path": "src/A.cpp", "start_line": 38, "line": 42, "side": "new", "kind": "Issue", "severity": 4,
+     "body": "**Issue:** The loop above re-reads the file on every pass. Read it once before the loop."},
+    {"path": "src/B.h", "line": 17, "side": "new", "kind": "Question", "severity": 2,
+     "body": "**Question:** Can this be null when the store is offline?"}
   ]
 }
 ```
 
-- The three SHAs are the `diff_refs` from step 1: the line numbers belong to that diff.
-- `summary` stays empty: Helm would post anything in it as a general comment.
-- `line` is always the **last** line the comment is about. `start_line` is its first line; leave it out
-  when the comment really is about one line. See step 8a for why.
-- `side` is `"new"`, or `"old"` when the lines are removed ones and numbered on the old side.
-- `body` is the comment exactly as GitLab should get it, opening with its `**Kind:**` (step 9).
-- `severity` is for the user's eyes only and never goes into a body:
+- **SHAs:** the three `diff_refs` from step 1. The line numbers belong to that diff.
+- **`path`:** the file's path in the MR (its new path when renamed).
+- **`line`:** the comment's **last** line. **`start_line`:** its first line, when the comment is
+  about several lines: a block, a loop, a function, a test. Leave it out for a one-line comment.
+  GitLab's Overview shows a comment under the code that ends at its last line, so a range shows
+  exactly the lines meant, and a comment on one line shows the lines above it. Phrase bodies to fit:
+  "the loop above".
+- **`side`:** `"new"` for added or unchanged lines, numbered as in the new file. `"old"` for removed
+  lines, numbered as in the old file.
+- **`body`:** the comment exactly as GitLab gets it, opening with its kind (step 9).
+- **`severity`:** for the user only, never in a body. Score the harm if the comment is ignored:
 
-  | | |
+  | Severity | Meaning |
   | --- | --- |
   | 5 | Must not merge as it is: a bug on a real path, data loss, a security hole, a broken build. |
   | 4 | A real defect or a missing test for changed behaviour, on a path that matters less. |
@@ -145,71 +177,43 @@ use that name for comments you post yourself: Helm would offer to post them a se
   | 2 | Would make it better, fine to leave: a simpler shape, a clearer name. |
   | 1 | A nit. |
 
-  Score the harm if the comment is ignored, not your confidence in it; confidence was step 6's filter.
+**With `--hold`, write as you go and post nothing.** Helm shows the file live on the review tab's
+Review commits page, where the user reads the comments on the code, edits or deletes them, adds
+their own, and submits the review to GitLab. So:
 
-Draft notes cannot be edited safely — the recovery path is delete-all then re-post from this file, so
-it must exist first.
+- Write the file as soon as the first comment survives the filter, and rewrite it each time another
+  does, instead of once at the end.
+- Read the file before every rewrite. The user may have edited, deleted or added comments since.
+  Keep their changes: never bring back a comment that is gone, and never change one they wrote.
+- Touch no draft note on GitLab. Then go to step 10.
 
-**With `--hold`, stop here.** Skip steps 8 and 8a entirely, and go to step 10. Do not post, delete or touch any draft note: the user
-goes through the comments in Helm and Helm posts them.
+## 8. Post as inline drafts
 
-## 8. Post as drafts
-
-One POST per finding. `Content-Type` is required or GitLab answers 415:
+Post with the plugin's script; never build GitLab positions by hand:
 
 ```
-glab api --method POST "projects/<enc>/merge_requests/<iid>/draft_notes" \
-  -H "Content-Type: application/json" --input note.json
+node "${CLAUDE_PLUGIN_ROOT}/scripts/post-review.mjs" <project> <worktree>/.flow-notes.posted.json
 ```
 
-```json
-{
-  "note": "**Issue:** …",
-  "position": {
-    "position_type": "text",
-    "base_sha": "…", "start_sha": "…", "head_sha": "…",
-    "new_path": "src/A.cpp", "old_path": "src/A.cpp",
-    "new_line": 42
-  }
-}
-```
+For each note it posts one **draft** note on its file and lines: a range from `start_line` to `line`
+when the note has one, otherwise the single line. It reads the diff of the exact MR version the notes
+were written against, works out GitLab's line codes, checks that each range survived, and re-posts a
+range GitLab refuses on its last line. It never posts a note without a position. Add `--dry-run`
+first when unsure: it prints each anchor and posts nothing.
 
-- Comment on a **deleted** line: `old_line` instead of `new_line`, and no `new_line`.
-- A note with a `start_line` also gets a `line_range` (step 8a). The position's own `new_line` is
-  still the range's **end** line.
-- Never `PUT` an existing draft note — it unanchors it. Delete and re-post from `.flow-notes.posted.json`.
+Read its output. One line per note:
 
-## 8a. Anchor on the whole range, or on its last line
+- `ok path:38-42 (range)`: posted on all its lines.
+- `ok path:42`: posted on one line.
+- `ok … (on its last line: …)`: the range could not be kept. Say so in the report.
+- `FAILED path:line: <error>`: not posted. Fix the note (usually a line not in the diff), write a
+  file with only the failed notes, and run the script on that file.
+- `warning: … has moved since this review`: the MR's head changed after your review. Say so in the
+  report.
 
-The MR's Overview tab shows a line comment under a snippet of the diff that **ends at the anchored
-line**: a few lines above it, nothing below. Anchor a comment about lines 38-42 on line 38 and a
-reader on the Overview sees the code *before* the block, not the block itself.
-
-So:
-
-- A comment about several lines — a loop, a function, a test, "this block" — is posted as a
-  **multi-line range** covering all of them, so the Overview shows exactly those lines.
-- If a range can't be posted (it spans hunks, or GitLab rejects it), anchor on the range's **last**
-  line, never its first, so the lines above it show as context.
-- Phrase the body to fit: "the loop above", not "the loop below".
-
-A range is a `line_range` inside `position`, next to the single-line fields:
-
-```json
-"line_range": {
-  "start": {"line_code": "<sha1(new_path)>_<old>_<new>", "type": "new", "new_line": 38},
-  "end":   {"line_code": "<sha1(new_path)>_<old>_<new>", "type": "new", "new_line": 42}
-}
-```
-
-- `line_code` is the SHA-1 hex of the file path, then the line's old-side and new-side numbers at
-  that point in the diff. On an added line the old number is the old-side counter at that spot, the
-  number the next unchanged line would have. Work both numbers out from the hunk; don't guess them.
-- `type` is `"new"` for an added line, `"old"` for a removed one (then `old_line` in place of
-  `new_line`), and left out for an unchanged context line.
-- Both ends must be in the same hunk.
-- After posting, `GET` the draft and check that `position.line_range` survived. If it didn't, delete
-  that draft and re-post it on the end line alone.
+Never `PUT` a draft note: an edit unanchors it. To change a comment, delete that draft
+(`glab api --method DELETE "projects/<enc>/merge_requests/<iid>/draft_notes/<id>"`), update the notes
+file, and post the changed note again.
 
 ## 9. Comment form
 
@@ -225,12 +229,13 @@ Start with one paragraph on what the review covered, in this order: what was rev
 roughly how many lines), which lenses ran and which were skipped and why, whether anything was built,
 and the user's note if there was one. It goes in this report only, never on the MR.
 
-Then print what you posted, grouped by severity, with a one-line total. Remind the user the notes are
-drafts: they prune in GitLab and submit there. Never submit for them.
-If asked later to change or add comments, delete the affected drafts and re-post them from
-`.flow-notes.posted.json`, updating the file to match.
+Then print what you posted, grouped by severity, each as `path:line` or `path:start-end`, with a
+one-line total and any note the script could not post or placed on its last line only. Remind the
+user the comments are drafts: they prune them in GitLab and submit there. Never submit for them.
+If asked later to change or add comments, delete the affected drafts, update
+`.flow-notes.posted.json`, and post the changed notes with the script (step 8).
 
 With `--hold`, print the same grouping of what is in `.flow-notes.json` and say that nothing has been
-posted: the comments wait in Helm's **Review comments** page, where the user edits them and posts them
-as drafts. If asked later to change or add comments, edit `.flow-notes.json` — it may already have
-been pruned by the user, so read it first and keep what is there.
+posted: the comments are on Helm's **Review commits** page, where **Submit review** publishes them.
+If asked later to change or add comments, edit `.flow-notes.json`. Read it first: the user may have
+pruned or added to it, and their changes stay.

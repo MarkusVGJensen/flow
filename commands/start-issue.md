@@ -1,115 +1,119 @@
 ---
 description: "Take an issue from a worktree to a merge request, stopping twice for approval"
 argument-hint: "<issue-id> [extent]"
-allowed-tools: ["Bash", "Glob", "Grep", "Read", "Write", "Edit", "Agent", "Skill"]
+allowed-tools: ["Bash", "PowerShell", "Glob", "Grep", "Read", "Write", "Edit", "Agent", "Skill", "LSP"]
 ---
 
 # Start an issue
 
-Drive issue `$ARGUMENTS` from nothing to an open MR. There are exactly **two** stops: the plan, and
-the pushed commits. Between them, do not ask permission for ordinary work.
+Take issue `$ARGUMENTS` to an open MR. Stop for the user exactly twice: at the plan (step 5) and at
+the pushed commits (step 11). Do everything in between without asking.
 
-## 0. The progress file
+You orchestrate; the agents do the work. Your context is for judgement: choose the questions, weigh
+the answers, check the plan, route findings. Leave the reading, test writing, coding and reviewing to
+the agents.
 
-`<worktree>/.flow-state.json` records how far this issue has come, so a session that dies, is
-compacted or comes back tomorrow resumes at the right step. Helm draws its step timeline from it and
-`/flow:status` reads it, so keep it current:
+## The progress file
+
+Keep `<worktree>/.flow-state.json` current. Helm reads it, and a resumed session
+starts from it.
 
 ```json
 {"issue": 128, "branch": "me/128-slug", "step": 6, "name": "tester", "status": "active", "at": "2026-09-14T10:12:00Z"}
 ```
 
-`step` and `name` come from this list; `at` is the UTC time of the write; keep `issue` and `branch`
-in every write.
+| step | name | step | name | step | name |
+| --- | --- | --- | --- | --- | --- |
+| 1 | `issue` | 5 | `plan-gate` | 9 | `gate-build` |
+| 2 | `worktree` | 6 | `tester` | 10 | `format` |
+| 3 | `extent` | 7 | `implementer` | 11 | `commits-gate` |
+| 4 | `plan` | 8 | `review` | 12 | `mr` |
 
-| step | name | | step | name |
-| --- | --- | --- | --- | --- |
-| 1 | `issue` | | 7 | `implementer` |
-| 2 | `worktree` | | 8 | `review` |
-| 3 | `extent` | | 9 | `gate-build` |
-| 4 | `plan` | | 10 | `format` |
-| 5 | `plan-gate` | | 11 | `commits-gate` |
-| 6 | `tester` | | 12 | `mr` |
+- `active`: written when a step starts.
+- `done`: written when it ends.
+- `waiting`: written at a gate (5 and 11), just before you stop. On approval, write the next step
+  `active` immediately.
+- `skipped`: a step that does not apply this time, with the reason in one line.
 
-`status` is one of:
+Write it atomically (`.flow-state.json.tmp`, then `mv -f`), with `issue`, `branch` and a UTC `at` in
+every write. The first write is step 2 `done`. Before it, make sure `.flow-state.json`,
+`.flow-state.json.tmp` and `.flow-plan.md` are each listed in the exclude file git reads,
+`"$(git rev-parse --git-path info/exclude)"` (the shared one, also for a worktree); append only the
+lines it does not already have.
 
-- `active` — at the **start** of a step, before any of its work.
-- `done` — when the step has finished.
-- `waiting` — at a gate (5 and 11), just before you stop for the user. Their approval finishes the
-  gate: write the **next** step `active` straight away.
-- `skipped` — for a step that does not apply this time (an empty test list skips the tester, an empty
-  `verify.gate` the gate build). Say why in one line.
+**Resuming.** If the issue's worktree already has the file, say in one line where you resume:
 
-How to write it:
+- `done` or `skipped`: start the next step.
+- `active`: the step was interrupted; finish what it left.
+- `waiting`: show the plan or the commits again and wait.
 
-- **Atomically:** write `.flow-state.json.tmp`, then `mv -f .flow-state.json.tmp .flow-state.json`.
-- **From step 2 on**, since the worktree holds it; its first write is step 2 `done`.
-- **Out of the diff:** on the first write, add `.flow-state.json` and `.flow-state.json.tmp` to
-  `"$(git rev-parse --git-dir)/info/exclude"`.
+## Agents and models
 
-**Resuming.** Before step 2, if this issue's worktree already holds the file, say in one line where you
-resume. `done` or `skipped`: continue with the next step. `active`: the step was interrupted; look at
-what it left and finish it. `waiting`: show the plan or the commits again and wait.
+Launch every agent with its model from `models` in the config, as the `model` parameter of the Agent
+call. A missing or null entry passes nothing.
 
-## Models
+| Agent | Model key | Pass it |
+| --- | --- | --- |
+| `flow:researcher` | `models.research` | one area and one question |
+| `flow:architect` | `models.architect` | the issue with its comments, the briefs, the plan path |
+| `flow:tester` | `models.build` | the plan path, `verify.targeted`, the lock script path |
+| `flow:implementer` | `models.build` | the plan path, the failing tests, `verify.syntaxCheck`, `verify.targeted`, the lock script path |
+| `code-simplifier` | `models.review` | the production files from the plan |
+| `flow:reviewer` | `models.review` | the base ref, the plan path, `review.floor`, `review.mute` |
+| `flow:mr-creator` | `models.mr` | the issue, the branch, the `mr` config |
 
-Every agent below is launched with the model its kind has in `models` in the config, passed on the
-call: `models.research` for the researchers, `models.architect` for the architect, `models.build` for
-the tester and the implementer, `models.review` for the simplifier and the reviewer, `models.mr` for
-the MR creator. A missing or null entry passes nothing, and the agent's own file decides. You, the
-session running this chain, stay on whatever model the user started you on.
+An agent sees only what you pass it. Give paths, not summaries: an agent reads the plan itself.
 
-## Builds take turns
+## Builds
 
-Every build in the worktree runs through the lock script, yours and the agents' alike, the early
-builds below, the tester's, the gate's:
+Run every build through the lock script, yours and the agents':
 
 ```
 sh "${CLAUDE_PLUGIN_ROOT}/scripts/with-build-lock.sh" <build command>
 ```
 
-Two builds in one build tree at once corrupt it, and more than this chain builds there: Helm
-configures a new worktree and builds it while you are quiet, under the same lock. The script waits
-for whoever holds it, without you, then runs the command and exits with its status. Pass the
-script's full path to the tester and the implementer when you task them. A `skill:` entry in
-`verify` names a skill: load it and run the command it gives through the script.
+It waits while another build (Helm's, or another agent's) holds the build tree.
 
-The full builds start as early as they can and run in the background (`run_in_background`), so
-that by the time a step needs one, all that is left is a small incremental build. Never poll one;
-its completion notice comes by itself. Send its output to a log in the git dir, not into the
-conversation, and read the log's tail only when it failed.
+- **A `skill:` entry** in `verify` names a skill. Load it, take the exact command it gives, and run
+  that command through the lock script. Never write your own build script in its place.
+- **Long builds run in the background** (`run_in_background`), output to a log in the git dir. Until
+  the completion notice arrives, do not read the log, sleep or check on it. When it arrives, read
+  only the log's tail, and only if the build failed.
+- **A gate this machine cannot run**, such as an Xcode build on Windows: mark it `skipped (host)` in
+  one line and go on. CI builds it.
 
 ## 1. Config and issue
 
-Read config (`.claude/flow.json`, else `~/.claude/flow.local.json`). If neither exists, stop and say
-which file to create from `flow.config.example.json`; never guess a project, a branch or a command.
-Fetch the issue:
+Read `.claude/flow.json`, else `~/.claude/flow.local.json`. If neither exists, stop and name the file
+to create from `flow.config.example.json`. Never guess a project, a branch or a command.
 
 ```
-glab api "projects/<enc>/issues/<id>"      # forge: glab
-gh issue view <id> --json title,body,comments   # forge: gh
+glab api "projects/<enc>/issues/<id>"            # forge: glab
+gh issue view <id> --json title,body,comments    # forge: gh
 ```
 
-Read the description **and the comments** — the thread usually narrows what is actually wanted.
+Read the description and every comment. The comments usually narrow what is wanted.
 
-## 2. Claim a worktree
+## 2. Worktree
 
-Slug from the issue title: lowercase, non-alphanumerics to `-`, collapse repeats, trim to ~50 chars.
-Branch from `branchPattern`. Worktree at `<worktreeRoot>/<issue>`.
+- Slug: the issue title, lowercased, non-alphanumerics to `-`, repeats collapsed, at most ~50 chars.
+- Branch: `branchPattern`. Path: `<worktreeRoot>/<issue>`.
 
 ```
+git fetch origin <defaultTarget>
 git worktree add <worktreeRoot>/<issue> -b <branch> origin/<defaultTarget>
 ```
 
-If the path exists and holds a progress file for **this** issue, resume (step 0). If it exists without
-one, ask before touching it — another session may own it.
+When a worktree for this issue already exists, use it; never create a second one:
 
-**Everything after this runs in that worktree.** Never build or edit in the directory you started in.
+- It holds this issue's progress file: resume (see the progress file above).
+- You were started inside it (Helm makes the worktree and its branch before it starts you): it is
+  yours. Carry on from here without asking.
 
-**Start the early build.** A new worktree's build tree is empty, and its first build is the long one.
-Start it now, so it runs while you research and plan and while the user reads the plan. In the
-background, from the worktree, every command in `verify.gate` in turn, each through the lock script,
-build only (a skill that can also run tests is asked only to build):
+From here on, work only in the worktree.
+
+**Start the early build now**, in the background: every `verify.gate` command in turn, build only,
+each through the lock script.
 
 ```
 gd=$(git rev-parse --absolute-git-dir)
@@ -118,188 +122,152 @@ gd=$(git rev-parse --absolute-git-dir)
 } > "$gd/flow-early-build.log" 2>&1
 ```
 
-Do not wait for it. It builds `origin/<defaultTarget>` as it is, so its result says nothing about
-this change: when it ends, say in one line whether it passed (a failure is the target's or this
-machine's, e.g. a platform it cannot build here) and carry on. The tester's first build waits for it
-through the lock and then has little left to do. On a resume, start it only if the build tree was
-never built. With an empty `verify.gate`, there is nothing to start.
+It builds the untouched target branch so that later builds are incremental. When its notice comes,
+say in one line whether it passed. A failure here is the target's or the machine's, not this change's.
+On a resume, start it only if the build tree was never built.
 
-## 3. Route the extent
+## 3. Extent
 
-Invoke the `extent-router` skill. It picks one session, subagents, an agent team, or a workflow.
+Invoke the `extent-router` skill with the issue. Typical outcomes:
 
-Below a team: proceed silently. At a team or workflow: show the choice, the agent count and a rough
-token estimate, and **wait**.
+- One class, one behaviour → subagents, the default chain below.
+- A feature on several platforms that must agree on one interface (a Windows view and an iOS view
+  over one model) → an agent team, one teammate per platform.
+- A mechanical change across hundreds of files, or a design hard enough to draft from three
+  independent angles and compare → a workflow.
 
-## 4. Research, then architect — read-only
+For subagents, continue without comment. For a team or a workflow, show the choice, the agent count
+and a rough token cost, and wait for a yes.
 
-First the reading, on the cheap model. Fan out `flow:researcher` agents **in parallel**, one per area
-the issue touches (the subsystem named in the issue, its tests, its callers, a comparable past change).
-Each gets one question and returns a factual brief. Reading is most of the tokens in planning and needs
-no judgement, which is why it runs on Sonnet. The judgement stays with you, the session running this
-chain: you choose the questions, weigh the briefs, and read the plan before the user does.
+## 4. Research, then plan
 
-Then task the `code-architect` agent (from `feature-dev`) with the issue **and the briefs**. It must
-produce, and must not write code, the **plan document**, in this order and under these headings. The
-architect has no Write tool, so it returns the document and you write it, unchanged, to
-`<worktree>/.flow-plan.md`.
+**Research in parallel.** Launch one `flow:researcher` per area, all in one message. Usually three to
+five. Example questions for an issue about token refresh:
 
-The plan is read by a person deciding yes or no, so it is simple and easy to review: short sections,
-plain words, the overview first and the detail last. Someone who reads only sections 1–6 knows what
-will change and what they are being asked to decide.
+- "How does `src/Auth` store and refresh tokens today? Every call site of `TokenStore`."
+- "What do the tests in `Tests/Auth` use as doubles for the network and the store?"
+- "Find a past change that added a persisted store: which files did it touch?"
 
-1. **Issue** — what is actually wrong or missing, in the reader's terms, with what the comments on the
-   issue narrowed it to. A few sentences, not a restatement of the title.
-2. **Fix** — the shape of the solution in a short paragraph: what will be different afterwards.
-3. **Architecture** — how the pieces fit, as UML in fenced `mermaid` blocks: a `classDiagram` of the
-   classes touched and added with the members that change, and a `sequenceDiagram` for each flow whose
-   order of calls matters. One diagram per concern; a diagram nobody needs is left out.
-4. **Folder structure** — a fenced tree of only the folders and files the change touches, each file
-   marked `(new)` or `(changed)` with a few words on its part in the fix.
-5. **UI visuals** — only when the change has a visible part; otherwise the heading with "No visible
-   change." One mockup per view or state, drawn as a fenced ASCII box or as an inline `<div>` with
-   inline styles, showing the layout as it is meant to look; then a **colour table** — role, hex value
-   in backticks (`#1d2c37`), where it is used — using the project's own tokens or palette where it has
-   one, so the implementer and the reviewer judge the same intent.
-6. **Open questions** — each decision the issue leaves open, numbered, with its options as a list and
-   the recommended one marked **(Recommended)** with a line on why. "None." when there are none. Do
-   not ask what the code or the issue already answers.
-7. **Detailed fix** — the detail the agents work from:
-   - **Alternatives** — the other approaches considered, a line each on why not.
-   - **Classes and files** — a table, one row per class or file: path, modified or added, what changes
-     in it, and the signatures of anything new or changed.
-   - **Tests** — the **test list**, one line per behaviour, named after the behaviour, and under each
-     the file it goes in. The tester writes exactly these.
-   - **Done means** — the observable conditions under which the issue is closed, and the verification
-     that proves each.
+A one-file issue can take one researcher, or none if you already know the file.
 
-Write the detailed fix assuming the recommended answers. If the user picks another, rewrite the
-affected sections before going on.
+**Plan.** Task `flow:architect` with the issue, the briefs and the plan path `<worktree>/.flow-plan.md`.
+It writes the plan there. Read it yourself before the gate. Send it back with your objection if it
+contradicts the issue thread, leaves an issue comment unanswered, or names files the briefs never
+mentioned.
 
-Keep it out of the diff the first time it is written:
-`echo .flow-plan.md >> "$(git rev-parse --git-dir)/info/exclude"`. Helm shows the file under **Plan**,
-diagrams drawn, so the terminal gets the one-line summary and the file gets the detail. When the plan
-changes after the gate, rewrite the file: it is the record of what was agreed, and the implementer,
-the tester and the reviewer read it.
+## 5. ■ Gate 1: the plan
 
-## 5. ■ Gate 1 — the plan
+Write `waiting`. Tell the user, in at most five lines, what the plan changes and its open questions,
+and that the full plan is in `.flow-plan.md` (Helm's **Plan** button). Then stop.
 
-Write the progress file with `status: waiting`. Say in a few lines what the plan does and that the
-document is in `.flow-plan.md` (Helm: the **Plan** button), then stop. Any clear yes is approval;
-Helm's **Approve plan** button types "The plan is approved. Continue.", possibly followed by a note to
-take into account. Approval that does not answer an open question takes its recommended answer; an
-answer that differs means rewriting the plan to match first. On approval, write step 6 `active` (or
-`skipped`, below) before anything else.
-Answer design questions. Re-run the architect if the shape changes, and have it rewrite the file; do
-not patch a plan you no longer believe in.
+- Any clear yes approves. Helm's **Approve plan** button sends "The plan is approved. Continue.",
+  possibly followed by a note: take the note into account.
+- An open question the approval does not answer takes its recommended option.
+- A different answer, or a change of shape: re-task `flow:architect` with the decision, so it rewrites
+  `.flow-plan.md`, and continue only once the plan matches. Never build on a plan that says something
+  else.
 
-## 6. Tester — red
+Answer design questions directly. On approval, write step 6 `active` (or `skipped`) first.
 
-Task the `flow:tester` agent with the approved test list from `.flow-plan.md`. Tests must fail for the right reason:
-the behaviour is missing, not because they do not compile.
+## 6. Tester: red
 
-Build with `verify.targeted` — one test target. Never the whole project here.
+Task `flow:tester`. It builds one target with `verify.targeted`, never the whole project. Tests must
+fail because the behaviour is missing, not because they do not compile.
 
-If the plan's test list is empty — a change with no behaviour to pin down, such as a comment, build
-or documentation fix — write step 6 `skipped` and go on to the implementer.
+An empty test list in the plan: write step 6 `skipped` ("no behaviour to test: a comment fix") and go
+on.
 
-## 7. Implementer — green
+## 7. Implementer: green
 
-Task the `flow:implementer` agent with the plan document. It may not edit the tests. Between iterations use `verify.syntaxCheck`,
-which costs seconds; reach for `verify.targeted` only when you need to actually run them.
+Task `flow:implementer`. It never edits the tests. Loop tester and implementer until green. After
+three rounds without green, stop and tell the user why; the plan is probably wrong.
 
-Loop tester ↔ implementer until green. If it takes more than three rounds, stop and say why — the
-plan is probably wrong.
+## 8. Self-review
 
-## 8. Self-review — fresh context
+On the branch's diff against `origin/<defaultTarget>`:
 
-Three passes, in this order, all on the branch's diff against `origin/<defaultTarget>`:
-
-1. **Simplify.** Task the `code-simplifier` agent (from the `code-simplifier` plugin) with the
-   production files the plan lists: same behaviour, less code, the project's idioms. It does not touch
-   the tests. Re-run `verify.targeted` afterwards; a red test means the simplification changed
-   behaviour, so undo that part.
-
-   **Then start the gate build**, before the review: the review and the security check only read,
-   so they run while it builds. In the background, every command in `verify.gate` as step 9 runs
-   them, each through the lock script, into `"$gd/flow-gate-build.log"` (`gd` as in step 2).
-   Note what it builds first:
-
+1. **Simplify.** Task `code-simplifier` with the production files from the plan, and tell it: same
+   behaviour, no test changes, no new comments. Re-run `verify.targeted`; undo any part that turns a
+   test red. If the plugin is not installed, say so in one line and skip it.
+2. **Start the gate build** in the background, as step 9 runs it, into `"$gd/flow-gate-build.log"`.
+   Record what it builds:
    ```
    { git rev-parse HEAD; git status --porcelain; git diff HEAD
      git ls-files -o --exclude-standard -z | xargs -0 cat; } 2>/dev/null | git hash-object --stdin
    ```
-2. **Review.** Task the `flow:reviewer` agent on the full diff. It has not seen the implementation
-   being written, which is the point. Route real findings back to the implementer; ignore anything in
-   `review.mute`.
-3. **Security, when it applies.** If the diff touches input parsing, authentication or permissions,
-   file paths, shell or SQL built from data, deserialization, secrets or network handling, invoke the
-   `security-review` skill on the branch. Treat what it reports like the reviewer's findings. A diff
-   that touches none of these skips it; say so in one line.
+3. **Review and security, in parallel** while it builds:
+   - Task `flow:reviewer` on the full diff.
+   - If the diff touches input parsing, authentication, permissions, file paths, shell or SQL built
+     from data, deserialization, secrets or network handling: invoke the `security-review` skill.
+     Otherwise say in one line that it does not apply.
 
-The simplifier is skipped when the plugin is not installed, with a line saying so; the review is not.
+Send each finding that is not in `review.mute` back through the chain: a behaviour change goes to the
+tester and then the implementer, anything else to the implementer.
 
 ## 9. Gate build
 
-Run **every** command in `verify.gate`. A change that builds in one configuration and not another is
-not done. Fix and re-run until clean.
+Every command in `verify.gate` must pass. The gate build from step 8 is the first run:
 
-The gate build started in step 8 is the first run. If it is still going, say so in one line and wait
-for its notice. When it passed and the hash from step 8 still comes out the same, nothing changed
-since it started and the gate is passed. Otherwise, a review fix or a failure, run the gate again
-(through the lock script), which now rebuilds only what changed. A session resumed at this step has
-no notice to wait for: run the gate.
+- Still running: say so in one line and wait for its notice.
+- Passed, and the hash from step 8 still matches: the gate has passed.
+- Otherwise, because of a failure or a later fix: run the gate again through the lock script. It
+  rebuilds only what changed.
 
-## 10. Format — last
+A session resumed at this step has no notice coming: run the gate.
 
-Run `verify.format`, then each entry in `verify.extra` whose condition applies to this change (an
-entry says when it applies, after a `#`). This step rewrites file mtimes and forces a full rebuild
-next time, which is why it is last and not continuous.
+## 10. Format, last
 
-Then stamp it, or the commit gate will block the MR step. With no `verify.format` configured, write
-step 10 `skipped` but still stamp:
+Formatting rewrites mtimes and forces a full rebuild, so it runs once, here.
+
+Run `verify.format`, then every entry in `verify.extra` whose condition (after its `#`) holds. Write
+the stamp in the same command as the formatter, never on its own:
 
 ```
-touch "$(git rev-parse --git-dir)/flow-formatted"
+<formatter command> && touch "$(git rev-parse --git-dir)/flow-formatted"
 ```
 
-## 11. ■ Gate 2 — the commits
+The stamp tells the commit gate that formatting ran. Touching it without formatting ships
+unformatted code. When `verify.format` asks for one tree-wide run, prefix that run with
+`FLOW_TREEWIDE_OK=1`; the guard is there to stop a second one. With no `verify.format`, write step 10
+`skipped` and touch the stamp alone.
 
-The user reads the work one commit at a time, in Helm's **Review commits** page, so the branch has
-to be worth reading that way before it stops here.
+## 11. ■ Gate 2: the commits
 
-1. **Shape the series.** The working history is scaffolding — tester red, implementer green, review
-   fixes, a formatting pass. The series you make here is the one that lands: the MR keeps it as it
-   is, and its reviewers read it one commit at a time too. Rewrite it (`git rebase -i` is not available; use `git reset --soft
-   origin/<defaultTarget>` and recommit, or `git commit --fixup` plus `git rebase --autosquash`) into
-   commits that each do one thing and build on their own, in the order the change is best understood:
-   tests with the code they test, a rename apart from a behaviour change, and never a later commit
-   that fixes an earlier one. Put independent fixes and refactors first, then the building blocks,
-   then the change that uses them, so each commit is read with what it needs already in place. Build
-   every commit on its own before pushing. Single-line messages, imperative, `{issue} - What this
-   commit does`. A small change is one commit; do not split for the sake of splitting.
-2. **Push the branch.** `git push -u origin <branch>`. If the branch is already on the remote from an
-   earlier pass through this gate, tag a backup (`git tag backup/<branch>-<stamp>`) and push with
-   `--force-with-lease`. Never a bare `--force`; the guard blocks it.
-3. **Stop.** Write the progress file with `status: waiting`. Say in one line how many commits there
-   are and that they are on the remote, and that the user can go through them under Review commits.
-   Marks the user submits from that page arrive as one message: write step 11 `active`, act on them,
-   keep the series readable (fold a fix into the commit it belongs to), push again with
-   `--force-with-lease` after a backup tag, and stop again with `waiting`. Do not open the merge request until the user approves; Helm's **Approve
-   commits** button types "The commits are approved. Open the merge request."
+The user reads the series one commit at a time in Helm's **Review commits** page, and the MR keeps
+the series as it is.
 
-Nothing else is squashed or opened here.
+1. **Shape the series.** Replace the working history (red, green, review fixes, formatting) with the
+   commits that land. No editor can open, so: `git reset --soft origin/<defaultTarget>` and
+   recommit, or `git commit --fixup=<sha>` and then
+   `GIT_SEQUENCE_EDITOR=: git rebase -i --autosquash origin/<defaultTarget>`.
+   - Each commit does one thing. Tests go with the code they test. A rename stays apart from a
+     behaviour change. No commit fixes an earlier one.
+   - Order: independent fixes and refactors, then building blocks, then the change that uses them.
+   - Messages: one line, imperative, `{issue} - What this commit does`.
+   - A small change is one commit. Example for a three-commit series:
+     ```
+     4462 - Rename TokenCache to TokenStore
+     4462 - Add a file-backed TokenStore
+     4462 - Refresh an expired token before each request
+     ```
+2. **Build the tip** with `verify.targeted` through the lock script. Do not build each commit.
+3. **Push.** `git push -u origin <branch>`. If the branch is already on the remote, first
+   `git tag backup/<branch>-<stamp>`, then `git push --force-with-lease`. Never a bare `--force`.
+4. **Stop.** Write `waiting`. Say in one line how many commits are on the remote and that they are
+   under Review commits.
+
+Marks from the Review commits page arrive as one message. Write step 11 `active` and route each mark
+like a review finding (step 8). Fold each fix into the commit it belongs to, tag a backup, push with
+`--force-with-lease`, and stop again with `waiting`. Open no MR until the user approves; Helm's
+**Approve commits** button sends "The commits are approved. Open the merge request."
 
 ## 12. MR
 
-On approval, write step 12 `active` and task `flow:mr-creator`. It keeps the approved series exactly
-as it is (it never squashes or rewrites it), opens the MR titled `{issue} - What was fixed` with the
-description from `mr.template` and the commit list, leaves squash-on-merge off, sets assignee and
-reviewers from `mr.assignee` and `mr.reviewers`, and returns the link. It does not edit source or
-history. Then write step 12 `done`.
+On approval: write step 12 `active`, then task `flow:mr-creator`. It opens the MR on the approved
+series as it stands, and returns the link. Then write step 12 `done`.
 
-**What this issue taught.** With `learn` set to `"ask"` (the default), finish with one line offering
-to fold what this issue taught into the project's `CLAUDE.md`: a convention the reviewer had to
-enforce, a build quirk the gate hit, a test pattern the tester settled on. Only on a yes, invoke the
-`claude-md-management:revise-claude-md` skill with those points, and show the proposed change before
-it is written. With `learn` set to `"off"`, or nothing worth keeping, say nothing.
+**Lessons.** With `learn` at `"ask"` (the default), end with one line offering to add what this issue
+taught to the project's `CLAUDE.md`. Examples: a convention the reviewer enforced, a build quirk the
+gate hit, a test pattern the tester settled on. Only on a yes, invoke
+`claude-md-management:revise-claude-md` with those points and show the change before writing it. With
+`learn` at `"off"`, or nothing worth keeping, say nothing.
