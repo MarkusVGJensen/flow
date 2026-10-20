@@ -1,8 +1,10 @@
 #!/bin/sh
-# SessionStart: checks that a C/C++ checkout has the compile_commands.json clangd reads at its root.
-# Without it the LSP tool parses every file with guessed flags and its answers mislead, so Claude is
-# told up front. Whatever this prints is added to the session's context. Always exits 0: it informs,
-# it never blocks.
+# SessionStart: gives a C/C++ checkout the compile_commands.json clangd reads at its root, then
+# checks it. The root gets the build tree's own copy when it is newer, and without a build tree the
+# Hub's (HELM_HUB, else a worktree named hub) with its paths moved here; compile-commands.mjs does
+# that, the same way Helm does. Without it the LSP tool parses every file with guessed flags and its
+# answers mislead, so what could not be fixed is told to Claude up front. Whatever this prints is
+# added to the session's context. Always exits 0: it never blocks.
 
 set -u
 . "$(dirname "$0")/command-dir.sh"
@@ -15,6 +17,18 @@ root=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
 [ -f "$root/CMakeLists.txt" ] || exit 0
 
 db="$root/compile_commands.json"
+
+# Before clangd first looks: one that finds none looks again only after half a minute.
+if command -v node >/dev/null 2>&1; then
+  case "$(node "$(dirname "$0")/compile-commands.mjs" "$root" 2>/dev/null)" in
+    own\ *) echo "flow: copied this checkout's build-tree compile_commands.json to $root." ;;
+    borrowed\ *)
+      echo "flow: wrote the Hub's compile_commands.json to $root, its paths moved to this checkout, until this checkout is configured."
+      echo "Files new on this branch are not in it; clangd guesses their flags from a neighbour."
+      ;;
+  esac
+fi
+
 # A file path written the way a compile database writes it: forward slashes, lower case.
 norm() { printf '%s' "$1" | sed -e 's|\\\\|/|g' -e 's|\\|/|g' | tr 'A-Z' 'a-z'; }
 

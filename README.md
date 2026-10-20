@@ -225,9 +225,10 @@ guesses show: headers "not found", `std::shared_ptr<…>` reported as `int`, no 
 So the idea has three parts:
 
 1. **Real flags in every checkout.** Helm copies the build tree's `compile_commands.json` to the root
-   of each worktree after every configure and build. A brand-new worktree borrows the Hub's copy,
-   with its paths rewritten, until its own configure has run, so a session can plan with real flags
-   from its first prompt.
+   of each checkout after every configure and build, and configures a checkout again when another
+   branch is checked out. A checkout with no build yet borrows the Hub's copy, with its paths
+   rewritten, until its own configure has run, so a session can plan with real flags from its first
+   prompt. The session-start hook below does the same for a session Helm did not start.
 2. **An index per checkout.** With the flags in place, clangd indexes the whole tree in the
    background and keeps the index in `.cache/clangd/index` beside `compile_commands.json`. A fresh
    worktree's index takes a while to build, minutes on a large tree; until it is done, "who calls
@@ -482,11 +483,17 @@ that run before every Bash and PowerShell command:
 
 One more hook runs when a session starts:
 
-- **Compile commands.** In a CMake checkout (a `CMakeLists.txt` at the root), checks that
-  `compile_commands.json` is at the root and describes this checkout. When it is missing, empty, or
-  written for another checkout, it tells Claude so, and where the build tree has one, so the session
-  does not trust a [language server](#how-the-language-server-sees-a-worktree) running on guessed
-  flags. It only informs; it never blocks or copies anything.
+- **Compile commands.** In a CMake checkout (a `CMakeLists.txt` at the root), puts
+  `compile_commands.json` at the root before the language server looks for it: the build tree's
+  own when it is newer than the root copy, and without a build tree the Hub's, with its source paths
+  moved to this checkout and its paths into the Hub's build tree kept. The Hub is `HELM_HUB`, which
+  Helm sets for its sessions, else a worktree of the repository named `hub`. The copy is byte for
+  byte what Helm writes, so the two never rewrite each other's. A `compile_commands.json` the
+  repository tracks is never touched, and one nothing ignores is added to `info/exclude` first. It
+  needs `node`. When the root copy is still missing, empty, or written for another checkout, it
+  tells Claude so, so the session does not trust a
+  [language server](#how-the-language-server-sees-a-worktree) running on guessed flags. It never
+  blocks.
 
 Both command hooks check the directory a command actually acts in, not just the session's: a
 `cd <worktree> && git commit` or a `git -C <worktree> commit` is checked against that worktree.
