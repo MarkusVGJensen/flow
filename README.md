@@ -149,10 +149,10 @@ flowchart TD
 | Commands | `commands/*.md` | The entry points you type, such as `/flow:start-issue`. Each one is a recipe the session follows |
 | Agents | `agents/*.md` | Specialised helpers the commands hand work to, each with only the tools its job needs |
 | Skill | `skills/extent-router/` | Decides how much machinery a task deserves before any is spent |
-| Hooks | `hooks/` | Checks that run before or after every shell command, and one when a session starts |
-| Scripts | `scripts/wait-ci.sh` | Waits on CI in the background so the model does not have to |
-| | `scripts/with-build-lock.sh` | Runs a build only while no other build uses the worktree's build tree |
-| | `scripts/post-review.mjs` | Posts a review's comments to GitLab as inline drafts, each on its file and lines |
+| Hooks | `hooks/` | Checks that run before or after every shell command, and one when a session starts; see [hooks as guard rails](#hooks-as-guard-rails) |
+| Scripts | `scripts/wait-ci.sh` | Checks the pipeline every few minutes in the background and wakes Claude only when there is a result, so waiting on CI costs no tokens |
+| | `scripts/with-build-lock.sh` | Makes builds take turns, so flow and Helm never build the same worktree at once and corrupt it. A lock left by a build that crashed is taken over after two minutes |
+| | `scripts/post-review.mjs` | Posts a review's comments to GitLab as drafts, each attached to the exact lines it is about, never as a general comment |
 | Evals | `evals/` | Tests for the plugin's own behaviour |
 
 ## Commands
@@ -481,8 +481,20 @@ change.
 
 ## Hooks as guard rails
 
-Some rules are too important to leave to the model remembering them, so they are `PreToolUse` hooks
-that run before every Bash and PowerShell command:
+Some rules are too important to leave to the model remembering them, so they are hooks: commands
+Claude Code runs on its own at fixed moments, whatever the model intended. In short:
+
+| Hook | When | What it is for |
+| --- | --- | --- |
+| Format gate | Before a commit | Stops a commit when code was edited after the formatter last ran, so unformatted code cannot get in. Only in flow worktrees |
+| Bash guard | Before every command | Stops a force push that could overwrite someone else's work (`--force-with-lease` is allowed), and an accidental run of the project's formatter over the whole tree, which would turn the next build into a full rebuild, unless you clearly opt in |
+| Compile commands | When a session starts | Gives a C++ checkout the file that lists each source file's real compiler settings, borrowing the Hub's until the checkout has its own build. Without it the language server guesses, and "go to definition" and "find callers" go wrong. Tells Claude when the file is still missing |
+| Watch after push | After a push | After a push to a branch with an open MR, tells Claude to watch the pipeline it started |
+
+`hooks/command-dir.sh` is not a hook but a helper they share: it works out which folder a command
+really runs in, so `cd other-worktree && git commit` is checked against that worktree.
+
+In detail, two are `PreToolUse` hooks that run before every Bash and PowerShell command:
 
 - **Format gate.** In a flow worktree (one with a `.flow-state.json`), blocks `git commit` when a
   changed file was edited after the formatter last ran. Docs, data and binaries do not count. The
