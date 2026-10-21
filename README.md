@@ -21,6 +21,9 @@ What flow adds to Claude Code:
   parallel; the strong model only sees their short summaries and makes the decisions.
 - **Review comments on your own MR, handled.** `/flow:resolve-comments` judges each comment, fixes
   the valid ones in one commit on top once you agree, and posts the replies you approve.
+- **A second opinion on your own branch.** `/flow:self-review <focus>` has a fresh agent review the
+  branch where you point it, returns numbered findings with a confidence each, says which it would
+  apply, and folds the ones you approve into the existing commits.
 - **Reviews of other people's MRs** that post line-anchored **draft** comments. Nothing is published
   until you submit the review yourself.
 - **CI watching that costs nothing while it waits.** After every push to a branch with an open MR, a
@@ -138,7 +141,7 @@ plugin already does a job well, flow calls it instead of reimplementing it.
 flowchart TD
   U(["You"]) --> CMD["Slash commands<br/>/flow:start-issue, /flow:review-mr, …"]
   CMD --> SK["Skill<br/>extent-router: how big is this job?"]
-  CMD --> AG["flow's own agents<br/>researcher, tester, implementer,<br/>reviewer, mr-creator"]
+  CMD --> AG["flow's own agents<br/>researcher, tester, implementer,<br/>reviewer, focus-reviewer, mr-creator"]
   CMD --> FP["Agents from companion plugins<br/>code-simplifier,<br/>review lenses, security-review"]
   CMD --> SCR["Scripts<br/>wait-ci.sh watches CI,<br/>with-build-lock.sh takes turns,<br/>post-review.mjs posts comments"]
   HK["Hooks<br/>format gate, bash guard,<br/>watch after push"] -. "check every<br/>shell command" .-> CMD
@@ -162,6 +165,7 @@ flowchart TD
 | `/flow:start-issue <id>` | Takes an issue from nothing to an open MR: worktree, plan, tests, implementation, review, build, format, commits, MR |
 | `/flow:review-mr <id> [--hold]` | Reviews an MR and posts line-anchored draft comments, never a general one, keeping a copy in `.flow-notes.posted.json`. With `--hold` the findings are saved to `.flow-notes.json` instead, each with a severity, for a front end to show and post |
 | `/flow:resolve-comments <id>` | Numbers and judges the open comments on your own MR and stops for you; then fixes the valid ones in one commit on top, `Resolved comments 1, 2, 3`, drafts a reply to each, and posts them once you approve |
+| `/flow:self-review [focus]` | Has `focus-reviewer` review your branch where the focus points, prints its findings as `1 (92%): file:line — …`, says which it would apply and why it would skip the rest, and stops; on your yes it applies them and folds each into the commit it belongs to. Your own review only: no forge, no comments |
 | `/flow:watch-pipeline [id]` | Waits on CI without spending tokens, fixes real failures and retries known flaky tests, within hard limits |
 ## Agents
 
@@ -172,6 +176,7 @@ flowchart TD
 | `tester` | Opus | edit, LSP | Writes the planned tests and checks they fail for the right reason. Never touches production code |
 | `implementer` | Opus | edit, LSP | Makes the failing tests pass, inside the files the plan names. Never edits a test |
 | `reviewer` | Opus | read, LSP | Reviews the diff against `CLAUDE.md` without having seen it being written. Reports, never edits |
+| `focus-reviewer` | Opus | read, LSP | Reviews your branch for `/flow:self-review`, only where the focus points, and scores each finding by confidence. Reports, never edits |
 | `mr-creator` | Sonnet | git only | Opens the MR from your template on the commits you approved |
 
 ## Companion plugins
