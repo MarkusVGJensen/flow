@@ -19,10 +19,12 @@ What flow adds to Claude Code:
   security review when the diff touches risky code.
 - **Cheap research, careful decisions.** Reading the code is fanned out to several cheaper agents in
   parallel; the strong model only sees their short summaries and makes the decisions.
+- **Review comments on your own MR, handled.** `/flow:resolve-comments` judges each comment, fixes
+  the valid ones in one commit on top once you agree, and posts the replies you approve.
 - **Reviews of other people's MRs** that post line-anchored **draft** comments. Nothing is published
   until you submit the review yourself.
-- **CI watching that costs nothing while it waits.** A script polls the pipeline in the background and
-  only wakes the model when there is a result.
+- **CI watching that costs nothing while it waits.** After every push to a branch with an open MR, a
+  script polls the pipeline in the background and only wakes the model when there is a result.
 - **Guard rails as hooks.** Commits are blocked until the code is formatted, and force pushes without
   a lease are blocked outright.
 - **Resumable.** Progress is written to a file after every step, so a crashed or restarted session
@@ -34,9 +36,14 @@ both supported; GitHub support is not complete yet, and `review-mr`, `resolve-co
 `watch-pipeline` still speak GitLab only.
 
 flow is always used together with [Helm](https://github.com/MarkusVGJensen/helm-releases), its
-desktop front end: a tab per issue, the review queue, the step timeline, the plan and commit review
-pages, and one-click worktrees. The commands write the files Helm reads (`.flow-state.json`,
-`.flow-plan.md`, `.flow-notes.json`) and understand the messages its buttons send.
+desktop front end. Helm is a window around Claude Code: every issue gets a tab with a live Claude
+session in the issue's own worktree, beside the review queue, the step timeline, the plan and commit
+review pages, and buttons that type flow's commands for you. Its first tab is always the **Hub**, a
+session on a checkout of the default branch (a worktree named `hub`) that Helm keeps at the newest
+commit and builds in the background. Ask questions about the codebase there; and because the Hub is
+always built, a new worktree borrows its build information until its own build has run. The commands
+write the files Helm reads (`.flow-state.json`, `.flow-plan.md`, `.flow-notes.json`) and understand
+the messages its buttons send.
 
 ## Contents
 
@@ -124,7 +131,7 @@ pages, and one-click worktrees. The commands write the files Helm reads (`.flow-
 ## The parts of the plugin
 
 flow has no runtime of its own. It is a set of plain Claude Code building blocks: Markdown files for
-the commands, agents and skill, two small shell hooks, and two shell scripts. Where a first-party
+the commands, agents and skill, four small hooks, and three scripts. Where a first-party
 plugin already does a job well, flow calls it instead of reimplementing it.
 
 ```mermaid
@@ -134,7 +141,7 @@ flowchart TD
   CMD --> AG["flow's own agents<br/>researcher, tester, implementer,<br/>reviewer, mr-creator"]
   CMD --> FP["Agents from companion plugins<br/>code-simplifier,<br/>review lenses, security-review"]
   CMD --> SCR["Scripts<br/>wait-ci.sh watches CI,<br/>with-build-lock.sh takes turns,<br/>post-review.mjs posts comments"]
-  HK["Hooks<br/>format gate, bash guard"] -. "check every<br/>shell command" .-> CMD
+  HK["Hooks<br/>format gate, bash guard,<br/>watch after push"] -. "check every<br/>shell command" .-> CMD
 ```
 
 | Part | Files | What it is for |
@@ -142,7 +149,7 @@ flowchart TD
 | Commands | `commands/*.md` | The entry points you type, such as `/flow:start-issue`. Each one is a recipe the session follows |
 | Agents | `agents/*.md` | Specialised helpers the commands hand work to, each with only the tools its job needs |
 | Skill | `skills/extent-router/` | Decides how much machinery a task deserves before any is spent |
-| Hooks | `hooks/` | Checks that run before every shell command and can block it |
+| Hooks | `hooks/` | Checks that run before or after every shell command, and one when a session starts |
 | Scripts | `scripts/wait-ci.sh` | Waits on CI in the background so the model does not have to |
 | | `scripts/with-build-lock.sh` | Runs a build only while no other build uses the worktree's build tree |
 | | `scripts/post-review.mjs` | Posts a review's comments to GitLab as inline drafts, each on its file and lines |
@@ -154,7 +161,7 @@ flowchart TD
 | --- | --- |
 | `/flow:start-issue <id>` | Takes an issue from nothing to an open MR: worktree, plan, tests, implementation, review, build, format, commits, MR |
 | `/flow:review-mr <id> [--hold]` | Reviews an MR and posts line-anchored draft comments, never a general one, keeping a copy in `.flow-notes.posted.json`. With `--hold` the findings are saved to `.flow-notes.json` instead, each with a severity, for a front end to show and post |
-| `/flow:resolve-comments <id>` | Judges the review feedback on your own MR, folds each real fix into the commit it belongs to, and drafts replies for the rest |
+| `/flow:resolve-comments <id>` | Numbers and judges the open comments on your own MR and stops for you; then fixes the valid ones in one commit on top, `Resolved comments 1, 2, 3`, drafts a reply to each, and posts them once you approve |
 | `/flow:watch-pipeline [id]` | Waits on CI without spending tokens, fixes real failures and retries known flaky tests, within hard limits |
 ## Agents
 
@@ -281,12 +288,12 @@ If you already know Claude Code's extension points, skip to [the table](#where-f
 
 | Feature | Where flow uses it |
 | --- | --- |
-| Slash commands | The seven [`/flow:*` commands](#commands) |
+| Slash commands | The four [`/flow:*` commands](#commands) |
 | Skills | `extent-router` (invoked by `start-issue`, and picked up by Claude on its own), the built-in `security-review`, and `claude-md-management:revise-claude-md` |
 | Subagents | flow's six [agents](#agents), plus `code-simplifier` and the `pr-review-toolkit` lenses |
 | Parallel fan-out | Researchers during planning; review lenses in `review-mr` |
 | Model per call | `models` in the config picks the model for each kind of agent |
-| Hooks | Two `PreToolUse` hooks on Bash: the [format gate and the bash guard](#hooks-as-guard-rails) |
+| Hooks | Two `PreToolUse` hooks on Bash and PowerShell, the [format gate and the bash guard](#hooks-as-guard-rails); a `PostToolUse` hook that starts CI watching after a push; a `SessionStart` hook for compile commands |
 | `LSP` tool | Researcher, tester, implementer and reviewer, when a language server is installed |
 | Background Bash | `wait-ci.sh`, while [watching CI](#waiting-without-the-model); the [early builds](#building-early) |
 | Agent teams, workflows | The top two rungs of the [extent router](#sizing-the-job-the-extent-router), used only after you approve the cost |
@@ -401,6 +408,13 @@ For one session or subagents it goes ahead without comment. For a team or a work
 what it would run and roughly what that costs, and waits for your yes. `/flow:start-issue` runs it
 before planning; Claude may also pick it up on its own when a task looks like it needs many agents.
 
+Sizing is cheap on purpose: it decides from the issue and a quick count, and starts no agents of its
+own. In `/flow:start-issue` the researchers of the next step do the reading, and the job is sized
+again if their briefs show it larger. The choice is recorded as `extent` in `.flow-state.json`, and
+the command has a table of what each extent changes in the later steps: who reads, who writes the
+tests and the code, and what is reviewed. A second word after the issue id
+(`/flow:start-issue 128 team`) sets the extent yourself.
+
 Most issues stop at subagents: the researchers, tester, implementer and reviewer are each started for
 one job and only report back to your session, never to each other. The two rungs above that differ
 mainly in **who coordinates the agents**: the agents themselves, or a script.
@@ -495,12 +509,20 @@ One more hook runs when a session starts:
   [language server](#how-the-language-server-sees-a-worktree) running on guessed flags. It never
   blocks.
 
-Both command hooks check the directory a command actually acts in, not just the session's: a
+One runs after a command:
+
+- **Watch after push.** After a `git push` of a branch that has an open MR, tells Claude that a
+  pipeline has started and to watch it as `/flow:watch-pipeline` does. A push of a branch without an
+  open MR, such as the commits gate's push before the MR exists, says nothing. It never blocks.
+
+The command hooks check the directory a command actually acts in, not just the session's: a
 `cd <worktree> && git commit` or a `git -C <worktree> commit` is checked against that worktree.
 
 ## Waiting without the model
 
-A model that polls CI pays for every check. `/flow:watch-pipeline` instead starts
+A model that polls CI pays for every check. Watching starts when `/flow:start-issue` has opened the
+MR, after every push to a branch with an open MR (the watch-after-push hook), or from Helm's
+**Watch pipeline** button. `/flow:watch-pipeline` then starts
 `scripts/wait-ci.sh` in the background. The script asks `glab` or `gh` every `ci.pollMinutes`,
 prints a line when the status changes, and exits when CI finishes. The session only wakes for a
 result: green, a failure to triage, or a 25-minute mark to restart the waiter.
@@ -567,7 +589,7 @@ The step numbers are what `.flow-state.json` records:
 | --- | --- | --- |
 | Set up | 1 `issue` | Read the config and fetch the issue, including its comments |
 | | 2 `worktree` | Create the worktree and branch, or resume one that exists |
-| | 3 `extent` | The extent router sizes the job; a team or workflow needs your yes |
+| | 3 `extent` | The extent router sizes the job from the issue, starting no agents; a team or workflow needs your yes |
 | Plan | 4 `plan` | Researchers read in parallel, the architect writes `.flow-plan.md` |
 | | 5 `plan-gate` | **You approve the plan** |
 | Build | 6 `tester` | Failing tests from the plan's test list (skipped if the list is empty) |
@@ -576,7 +598,7 @@ The step numbers are what `.flow-state.json` records:
 | | 9 `gate-build` | Every command in `verify.gate` must pass; the build started in step 8 counts when nothing changed since |
 | | 10 `format` | The formatter, once, then `verify.extra` checks |
 | Ship | 11 `commits-gate` | Commits are shaped and pushed; **you approve them** |
-| | 12 `mr` | `mr-creator` opens the MR on the approved commits, then flow offers to save lessons |
+| | 12 `mr` | `mr-creator` opens the MR on the approved commits, flow starts watching its pipeline and offers to save lessons |
 
 **Lessons.** Once the MR is open, flow offers to fold what the issue taught (a convention the
 reviewer had to enforce, a build quirk) into `CLAUDE.md` through `claude-md-management`. Only on a

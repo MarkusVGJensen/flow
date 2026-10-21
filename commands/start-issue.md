@@ -9,6 +9,12 @@ allowed-tools: ["Bash", "PowerShell", "Glob", "Grep", "Read", "Write", "Edit", "
 Take issue `$ARGUMENTS` to an open MR. Stop for the user exactly twice: at the plan (step 5) and at
 the pushed commits (step 11). Do everything in between without asking.
 
+- The first token is the issue id.
+- A second token of `session`, `subagents`, `team` or `workflow` is the extent: it replaces step 3's
+  choice, and counts as the user's yes for a team or a workflow.
+- Anything else is the user's **note** (Helm passes what was typed when the issue was started). It
+  outranks this file, and the architect gets it with the issue.
+
 You orchestrate; the agents do the work. Your context is for judgement: choose the questions, weigh
 the answers, check the plan, route findings. Leave the reading, test writing, coding and reviewing to
 the agents.
@@ -19,7 +25,7 @@ Keep `<worktree>/.flow-state.json` current. Helm reads it, and a resumed session
 starts from it.
 
 ```json
-{"issue": 128, "branch": "me/128-slug", "step": 6, "name": "tester", "status": "active", "at": "2026-09-14T10:12:00Z"}
+{"issue": 128, "branch": "me/128-slug", "step": 6, "name": "tester", "status": "active", "extent": "subagents", "at": "2026-09-14T10:12:00Z"}
 ```
 
 | step | name | step | name | step | name |
@@ -128,7 +134,9 @@ On a resume, start it only if the build tree was never built.
 
 ## 3. Extent
 
-Invoke the `extent-router` skill with the issue. Typical outcomes:
+Invoke the `extent-router` skill with the issue. Size from what the issue and its comments say, plus
+at most a few cheap looks of your own (one `Grep` count, one `LSP` references call). Launch no agents
+here: reading the code is step 4's job, and its researchers report the size too. Typical outcomes:
 
 - One class, one behaviour → subagents, the default chain below.
 - A feature on several platforms that must agree on one interface (a Windows view and an iOS view
@@ -136,8 +144,23 @@ Invoke the `extent-router` skill with the issue. Typical outcomes:
 - A mechanical change across hundreds of files, or a design hard enough to draft from three
   independent angles and compare → a workflow.
 
-For subagents, continue without comment. For a team or a workflow, show the choice, the agent count
-and a rough token cost, and wait for a yes.
+Record the choice as `"extent"` in every later write of `.flow-state.json`, so a resumed session
+keeps it. For `session` or `subagents`, continue without comment. For a team or a workflow, show the
+choice, the agent count and a rough token cost, and wait for a yes; on a no, record `subagents`.
+
+What the extent changes in the steps below; everything not named stays as written, the gates
+included:
+
+| Extent | Step 4 | Steps 6 and 7 | Step 8 |
+| --- | --- | --- | --- |
+| `session` | Read the one to three files yourself; the architect still writes the plan | Tester and implementer as written | As written |
+| `subagents` | As written | As written | As written |
+| `team` | As written; the plan names one strand per teammate and the interface they share | One teammate per strand, each running tester then implementer on its own files; you lead and settle the shared interface | One reviewer over the whole diff, after every strand is green |
+| `workflow` | As written; the plan names the batches and the check each must pass | A workflow script: one implementer per batch, then a verifier per batch running `verify.targeted` | One reviewer over a sample of batches plus every batch a verifier failed |
+
+**Correcting course.** When the briefs of step 4 show a larger job than step 3 sized (many more
+files, a second platform, a sweep), route again before tasking the architect, and ask as above if
+the new extent is a team or a workflow.
 
 ## 4. Research, then plan
 
@@ -264,7 +287,9 @@ like a review finding (step 8). Fold each fix into the commit it belongs to, tag
 ## 12. MR
 
 On approval: write step 12 `active`, then task `flow:mr-creator`. It opens the MR on the approved
-series as it stands, and returns the link. Then write step 12 `done`.
+series as it stands, and returns the link. Then write step 12 `done`, and watch the MR's first
+pipeline as `/flow:watch-pipeline <mr>` describes: its waiter in the background, costing nothing
+until CI finishes.
 
 **Lessons.** With `learn` at `"ask"` (the default), end with one line offering to add what this issue
 taught to the project's `CLAUDE.md`. Examples: a convention the reviewer enforced, a build quirk the

@@ -10,6 +10,10 @@ Watch the pipeline for `$ARGUMENTS` (default: the MR for the current branch) unt
 stop. This is the only part of `flow` that writes to shared infrastructure
 without asking each time, so the limits below are absolute.
 
+It starts in four ways: typed, or from Helm's **Watch pipeline** button; at the end of
+`/flow:start-issue`, once the MR is open; and after any push of a branch with an open MR, when the
+`watch-after-push` hook tells you so. Already waiting on that MR: keep the one waiter.
+
 ## Refuse outright
 
 Stop immediately, with a one-line reason, if any of these hold:

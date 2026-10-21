@@ -31,7 +31,8 @@ mid-work.
   the theme files, one `git log -p` over the range for font changes. Do not grep the tree yourself
   for an hour.
 - "Fix these six review comments." When they touch different files, one implementer per group; when
-  they touch the same files, one implementer for all of them, in order.
+  they touch the same files, one implementer for all of them, in order. The fixes land in one commit
+  on top either way.
 - "Review this 20-file MR." Review lenses in parallel (`/flow:review-mr` does this).
 - The issue chain: researchers, then architect, tester, implementer, reviewer.
 
@@ -61,6 +62,13 @@ mid-work.
 - **One message, many Agent calls.** Agents in the same message run at the same time.
 - **Each agent gets one question and the paths it needs.** It sees nothing of your conversation.
 - **Ask for short answers:** a brief under 400 words, findings as `path:line`.
+
+## Sizing is cheap
+
+Decide from what you already know plus a few cheap looks: one `Grep` count, one `LSP` references
+call. Do not launch agents to decide how many agents to launch. When the task is a command with its
+own research step, such as `/flow:start-issue`, that step does the reading, and you route again if
+its findings show a bigger job.
 
 ## The gate
 
