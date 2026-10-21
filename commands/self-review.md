@@ -22,8 +22,12 @@ Stop for the user exactly once: at your verdict (step 3).
 
 ## 1. Review, in fresh context
 
-Base: `origin/<defaultTarget>`, fetched first. The range is `<base>...HEAD`, plus uncommitted changes
-when there are any. Nothing in the range: say so in one line and stop.
+Base: `origin/<defaultTarget>`, fetched first, unless the branch is stacked on another merge
+request's branch. Then the base is the nearest branch below it, as Helm's Review commits finds it:
+of the remote branches HEAD contains and `origin/<defaultTarget>` does not
+(`git for-each-ref --merged=HEAD --no-merged=origin/<defaultTarget> refs/remotes/origin`), leaving
+out this branch's own, the one HEAD is fewest commits ahead of. The range is `<base>...HEAD`, plus
+uncommitted changes when there are any. Nothing in the range: say so in one line and stop.
 
 Task `flow:focus-reviewer` (`models.review`) with the range, whether uncommitted changes count, the
 focus as given, and `<worktree>/.flow-plan.md` when it exists. Give it nothing of your own reasoning
